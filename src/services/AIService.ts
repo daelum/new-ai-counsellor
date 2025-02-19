@@ -3,6 +3,7 @@ import { OPENAI_API_KEY } from '@env';
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import * as FileSystem from 'expo-file-system';
 import { Audio } from 'expo-av';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type EventCallback = (isRecording: boolean) => void;
 
@@ -28,6 +29,20 @@ interface RecordingStatus {
   silenceStart: number;
 }
 
+interface DevotionalHistoryItem {
+  id: string;
+  date: string;
+  title: string;
+  verse: {
+    text: string;
+    reference: string;
+  };
+  message: string;
+  prayer: string;
+  isPersonalized: boolean;
+  savedAt: string;
+}
+
 class AIService {
   private openai: OpenAI;
   private static instance: AIService;
@@ -36,6 +51,8 @@ class AIService {
   private recording: Audio.Recording | null = null;
   private recordingStatus: RecordingStatus = { isRecording: false, lastVolume: 0, silenceStart: 0 };
   private eventEmitter: SimpleEventEmitter = new SimpleEventEmitter();
+  private static readonly DEVOTIONAL_CACHE_KEY = 'cached_devotional';
+  private static readonly DEVOTIONAL_HISTORY_KEY = 'devotional_history';
 
   private constructor() {
     if (!OPENAI_API_KEY) {
@@ -512,6 +529,246 @@ Additional guidelines for your responses:
       } catch (error) {
         console.error('Error stopping sound:', error);
       }
+    }
+  }
+
+  private async getCachedDevotional(): Promise<{
+    devotional: any;
+    isSameDay: boolean;
+  } | null> {
+    try {
+      const cached = await AsyncStorage.getItem(AIService.DEVOTIONAL_CACHE_KEY);
+      if (!cached) return null;
+
+      const { devotional, timestamp } = JSON.parse(cached);
+      const cachedDate = new Date(timestamp);
+      const today = new Date();
+      
+      const isSameDay = 
+        cachedDate.getDate() === today.getDate() &&
+        cachedDate.getMonth() === today.getMonth() &&
+        cachedDate.getFullYear() === today.getFullYear();
+
+      return {
+        devotional,
+        isSameDay
+      };
+    } catch (error) {
+      console.error('Error reading cached devotional:', error);
+      return null;
+    }
+  }
+
+  private async saveDevotionalToHistory(devotional: any) {
+    try {
+      const history = await this.getDevotionalHistory();
+      const historyItem: DevotionalHistoryItem = {
+        ...devotional,
+        savedAt: new Date().toISOString()
+      };
+      
+      history.unshift(historyItem);
+      
+      // Keep only the last 30 days of devotionals
+      const trimmedHistory = history.slice(0, 30);
+      await AsyncStorage.setItem('devotionalHistory', JSON.stringify(trimmedHistory));
+    } catch (error) {
+      console.error('Error saving devotional to history:', error);
+    }
+  }
+
+  public async getDevotionalHistory(): Promise<DevotionalHistoryItem[]> {
+    try {
+      const historyString = await AsyncStorage.getItem('devotionalHistory');
+      if (!historyString) return [];
+      return JSON.parse(historyString);
+    } catch (error) {
+      console.error('Error getting devotional history:', error);
+      return [];
+    }
+  }
+
+  private async cacheDevotional(devotional: any): Promise<void> {
+    try {
+      const cacheData = {
+        devotional,
+        timestamp: new Date().toISOString()
+      };
+      await AsyncStorage.setItem(
+        AIService.DEVOTIONAL_CACHE_KEY,
+        JSON.stringify(cacheData)
+      );
+      // Save to history when caching
+      await this.saveDevotionalToHistory(devotional);
+    } catch (error) {
+      console.error('Error caching devotional:', error);
+    }
+  }
+
+  public async getDailyDevotional(): Promise<any> {
+    try {
+      // Check cache first
+      const cached = await this.getCachedDevotional();
+      if (cached?.isSameDay) {
+        console.log('Returning cached regular devotional');
+        return cached.devotional;
+      }
+
+      const response = await this.openai.chat.completions.create({
+        model: "gpt-4",
+        messages: [
+          {
+            role: "system",
+            content: `You are a Christian devotional writer. Create an inspiring daily devotional that includes:
+            1. A relevant title
+            2. A Bible verse from the NIV translation
+            3. A meaningful message that explains the verse and its application
+            4. A prayer that relates to the message
+            
+            Format the response as a JSON object with the following structure:
+            {
+              "title": "Title of devotional",
+              "verse": {
+                "text": "The Bible verse text",
+                "reference": "Book Chapter:Verse"
+              },
+              "message": "The devotional message",
+              "prayer": "The prayer for the day"
+            }`
+          }
+        ],
+        temperature: 0.7
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error('No content received from OpenAI');
+      }
+
+      const devotionalContent = JSON.parse(content);
+      const devotional = {
+        id: new Date().toISOString(),
+        date: new Date().toLocaleDateString('en-US', {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        }),
+        ...devotionalContent
+      };
+
+      // Cache the new devotional
+      await this.cacheDevotional(devotional);
+      await this.saveDevotionalToHistory(devotional);
+      return devotional;
+    } catch (error) {
+      console.error('Error generating daily devotional:', error);
+      throw error;
+    }
+  }
+
+  public async getPersonalizedDevotional(): Promise<any> {
+    try {
+      // Check cache first
+      const cached = await this.getCachedDevotional();
+      if (cached?.isSameDay) {
+        console.log('Returning cached devotional');
+        return cached.devotional;
+      }
+
+      // If no conversation history (besides system message), return regular devotional
+      if (this.conversationHistory.length <= 1) {
+        const regularDevotional = await this.getDailyDevotional();
+        const devotionalWithFlag = {
+          ...regularDevotional,
+          isPersonalized: false
+        };
+        await this.cacheDevotional(devotionalWithFlag);
+        await this.saveDevotionalToHistory(devotionalWithFlag);
+        return devotionalWithFlag;
+      }
+
+      // Get last few messages for context (skip system message)
+      const recentMessages = this.conversationHistory
+        .slice(1)
+        .slice(-4)
+        .map(msg => `${msg.role}: ${msg.content}`)
+        .join('\n');
+
+      const response = await this.openai.chat.completions.create({
+        model: "gpt-4",
+        messages: [
+          {
+            role: "system",
+            content: `You are a Christian devotional writer with counseling expertise. Create a personalized daily devotional that addresses the specific spiritual and emotional needs revealed in the user's recent conversations. The devotional should provide comfort, guidance, and spiritual insight that directly relates to their situation.
+
+            Format the response as a JSON object with the following structure:
+            {
+              "title": "Title that relates to their situation",
+              "verse": {
+                "text": "A Bible verse specifically chosen for their situation",
+                "reference": "Book Chapter:Verse"
+              },
+              "message": "A message that connects the verse to their specific situation and provides comfort/guidance",
+              "prayer": "A personal prayer that addresses their specific needs"
+            }`
+          },
+          {
+            role: "user",
+            content: `Create a personalized devotional based on these recent conversation excerpts:\n\n${recentMessages}`
+          }
+        ],
+        temperature: 0.7
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error('No content received from OpenAI');
+      }
+
+      const devotionalContent = JSON.parse(content);
+      const personalizedDevotional = {
+        id: new Date().toISOString(),
+        date: new Date().toLocaleDateString('en-US', {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        }),
+        ...devotionalContent,
+        isPersonalized: true
+      };
+
+      // Cache the new devotional
+      await this.cacheDevotional(personalizedDevotional);
+      await this.saveDevotionalToHistory(personalizedDevotional);
+      return personalizedDevotional;
+    } catch (error) {
+      console.error('Error generating personalized devotional:', error);
+      // Check cache before falling back to regular devotional
+      const cached = await this.getCachedDevotional();
+      if (cached?.isSameDay) {
+        return cached.devotional;
+      }
+
+      // If no cache, generate and cache regular devotional
+      const regularDevotional = await this.getDailyDevotional();
+      const devotionalWithFlag = {
+        ...regularDevotional,
+        isPersonalized: false
+      };
+      await this.cacheDevotional(devotionalWithFlag);
+      await this.saveDevotionalToHistory(devotionalWithFlag);
+      return devotionalWithFlag;
+    }
+  }
+
+  // Add method to force refresh devotional
+  public async refreshDevotional(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(AIService.DEVOTIONAL_CACHE_KEY);
+    } catch (error) {
+      console.error('Error clearing devotional cache:', error);
     }
   }
 }

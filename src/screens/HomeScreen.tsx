@@ -2,17 +2,28 @@ import React from 'react';
 import { View, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { Text, Card, Button } from '@rneui/themed';
 import { useNavigation } from '@react-navigation/native';
+import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 
 type RootStackParamList = {
+  HomeScreen: undefined;
+  PrayerBoard: undefined;
+};
+
+type TabParamList = {
   Home: undefined;
   Counseling: undefined;
   Bible: undefined;
+  Devotional: undefined;
   Profile: undefined;
 };
 
-type NavigationProp = BottomTabNavigationProp<RootStackParamList>;
+type NavigationProp = CompositeNavigationProp<
+  NativeStackNavigationProp<RootStackParamList>,
+  BottomTabNavigationProp<TabParamList>
+>;
 
 const HomeScreen = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -50,6 +61,32 @@ const HomeScreen = () => {
           <Text style={styles.actionTitle}>Explore Scripture</Text>
           <Text style={styles.actionDescription}>
             Search and study Bible verses for inspiration
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.actionCard}
+          onPress={() => navigation.navigate('Devotional')}
+        >
+          <View style={styles.actionIconContainer}>
+            <Ionicons name="heart" size={24} color="#10a37f" />
+          </View>
+          <Text style={styles.actionTitle}>Daily Devotional</Text>
+          <Text style={styles.actionDescription}>
+            Start your day with spiritual reflection and prayer
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.actionCard}
+          onPress={() => navigation.navigate('PrayerBoard')}
+        >
+          <View style={styles.actionIconContainer}>
+            <Ionicons name="people" size={24} color="#10a37f" />
+          </View>
+          <Text style={styles.actionTitle}>Prayer Board</Text>
+          <Text style={styles.actionDescription}>
+            Share prayer requests and pray for others in the community
           </Text>
         </TouchableOpacity>
       </View>

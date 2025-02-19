@@ -1,158 +1,295 @@
 import React, { useState, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, Switch, Alert } from 'react-native';
-import { Text, ListItem } from '@rneui/themed';
+import { View, ScrollView, StyleSheet, Platform, TouchableOpacity } from 'react-native';
+import { Text, Switch, Button } from '@rneui/themed';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import NotificationService from '../services/NotificationService';
 
 const ProfileScreen = () => {
-  const [notifications, setNotifications] = useState(true);
-  const [dailyVerse, setDailyVerse] = useState(true);
+  const [devotionalEnabled, setDevotionalEnabled] = useState(false);
+  const [wisdomEnabled, setWisdomEnabled] = useState(false);
+  const [devotionalTime, setDevotionalTime] = useState(new Date());
+  const [wisdomTime, setWisdomTime] = useState(new Date());
+  const [showDevotionalTimePicker, setShowDevotionalTimePicker] = useState(false);
+  const [showWisdomTimePicker, setShowWisdomTimePicker] = useState(false);
+  const [loading, setLoading] = useState(true);
+
   const notificationService = NotificationService.getInstance();
 
   useEffect(() => {
-    setupNotifications();
+    loadSettings();
   }, []);
 
-  const setupNotifications = async () => {
-    await notificationService.setupInitialNotification();
-  };
-
-  const handleDailyVerseToggle = async (value: boolean) => {
+  const loadSettings = async () => {
     try {
-      const hasPermission = await notificationService.requestPermissions();
+      const devotionalSettings = await notificationService.getNotificationSettings('devotional');
+      const wisdomSettings = await notificationService.getNotificationSettings('wisdom');
       
-      if (hasPermission) {
-        setDailyVerse(value);
-        await notificationService.scheduleDailyVerseNotification(value);
-      } else {
-        Alert.alert(
-          'Permission Required',
-          'Please enable notifications in your device settings to receive daily Bible verses.',
-          [{ text: 'OK' }]
-        );
-        setDailyVerse(false);
+      if (devotionalSettings) {
+        setDevotionalEnabled(devotionalSettings.enabled);
+        const savedTime = new Date();
+        savedTime.setHours(devotionalSettings.hour);
+        savedTime.setMinutes(devotionalSettings.minute);
+        setDevotionalTime(savedTime);
+      }
+
+      if (wisdomSettings) {
+        setWisdomEnabled(wisdomSettings.enabled);
+        const savedTime = new Date();
+        savedTime.setHours(wisdomSettings.hour);
+        savedTime.setMinutes(wisdomSettings.minute);
+        setWisdomTime(savedTime);
       }
     } catch (error) {
-      console.error('Error toggling daily verse:', error);
-      Alert.alert(
-        'Error',
-        'Unable to set up daily Bible verse notifications. Please try again.',
-        [{ text: 'OK' }]
-      );
-      setDailyVerse(false);
+      console.error('Error loading notification settings:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleNotificationsToggle = async (value: boolean) => {
+  const handleDevotionalTimeChange = async (event: any, selectedTime?: Date) => {
+    setShowDevotionalTimePicker(Platform.OS === 'ios');
+    if (selectedTime) {
+      setDevotionalTime(selectedTime);
+      if (devotionalEnabled) {
+        await updateNotification('devotional', selectedTime);
+      }
+    }
+  };
+
+  const handleWisdomTimeChange = async (event: any, selectedTime?: Date) => {
+    setShowWisdomTimePicker(Platform.OS === 'ios');
+    if (selectedTime) {
+      setWisdomTime(selectedTime);
+      if (wisdomEnabled) {
+        await updateNotification('wisdom', selectedTime);
+      }
+    }
+  };
+
+  const toggleDevotionalSwitch = async () => {
     try {
-      const hasPermission = await notificationService.requestPermissions();
+      const newState = !devotionalEnabled;
+      setDevotionalEnabled(newState);
       
-      if (hasPermission) {
-        setNotifications(value);
-        // If turning off notifications, also turn off daily verse
-        if (!value && dailyVerse) {
-          handleDailyVerseToggle(false);
-        }
+      if (newState) {
+        await updateNotification('devotional', devotionalTime);
       } else {
-        Alert.alert(
-          'Permission Required',
-          'Please enable notifications in your device settings.',
-          [{ text: 'OK' }]
-        );
-        setNotifications(false);
+        await notificationService.cancelReminder('devotional');
       }
     } catch (error) {
-      console.error('Error toggling notifications:', error);
-      Alert.alert(
-        'Error',
-        'Unable to update notification settings. Please try again.',
-        [{ text: 'OK' }]
-      );
-      setNotifications(false);
+      console.error('Error toggling devotional notifications:', error);
+      setDevotionalEnabled(!devotionalEnabled); // Revert on error
     }
+  };
+
+  const toggleWisdomSwitch = async () => {
+    try {
+      const newState = !wisdomEnabled;
+      setWisdomEnabled(newState);
+      
+      if (newState) {
+        await updateNotification('wisdom', wisdomTime);
+      } else {
+        await notificationService.cancelReminder('wisdom');
+      }
+    } catch (error) {
+      console.error('Error toggling wisdom notifications:', error);
+      setWisdomEnabled(!wisdomEnabled); // Revert on error
+    }
+  };
+
+  const updateNotification = async (type: 'devotional' | 'wisdom', selectedTime: Date) => {
+    try {
+      await notificationService.scheduleReminder(
+        type,
+        selectedTime.getHours(),
+        selectedTime.getMinutes()
+      );
+    } catch (error) {
+      console.error('Error updating notification:', error);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.loadingText}>Loading settings...</Text>
+      </View>
+    );
+  }
+
+  const renderTimePicker = (
+    type: 'devotional' | 'wisdom',
+    time: Date,
+    isEnabled: boolean,
+    showPicker: boolean,
+    handleTimeChange: any,
+    setShowPicker: (show: boolean) => void
+  ) => {
+    const timeString = time.toLocaleTimeString([], { 
+      hour: 'numeric', 
+      minute: '2-digit',
+      hour12: true 
+    });
+
+    if (Platform.OS === 'ios') {
+      return (
+        <View style={styles.timePickerWrapper}>
+          {!showPicker ? (
+            <TouchableOpacity
+              onPress={() => isEnabled && setShowPicker(true)}
+              disabled={!isEnabled}
+            >
+              <Text style={[styles.timeLabel, !isEnabled && styles.disabled]}>
+                {timeString}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.inlinePickerContainer}>
+              <View style={styles.pickerWrapper}>
+                <DateTimePicker
+                  value={time}
+                  mode="time"
+                  display="spinner"
+                  onChange={(event, selectedTime) => {
+                    handleTimeChange(event, selectedTime);
+                    if (event.type === 'set') {
+                      setShowPicker(false);
+                    }
+                  }}
+                  style={styles.inlineTimePicker}
+                  textColor="#ffffff"
+                />
+              </View>
+              <TouchableOpacity
+                style={styles.doneButton}
+                onPress={() => setShowPicker(false)}
+              >
+                <Text style={styles.doneButtonText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      );
+    }
+
+    return (
+      <>
+        <TouchableOpacity
+          onPress={() => isEnabled && setShowPicker(true)}
+          disabled={!isEnabled}
+          style={styles.timeButton}
+        >
+          <Text style={[styles.timeLabel, !isEnabled && styles.disabled]}>
+            {timeString}
+          </Text>
+        </TouchableOpacity>
+        {showPicker && (
+          <DateTimePicker
+            value={time}
+            mode="time"
+            display="spinner"
+            onChange={(event, selectedTime) => {
+              setShowPicker(false);
+              handleTimeChange(event, selectedTime);
+            }}
+          />
+        )}
+      </>
+    );
   };
 
   return (
     <ScrollView style={styles.container}>
-      <View style={styles.profileHeader}>
+      <View style={styles.header}>
         <View style={styles.avatarContainer}>
           <Ionicons name="person-circle" size={80} color="#10a37f" />
         </View>
-        <Text h4 style={styles.welcomeText}>
-          Welcome to Solomon
-        </Text>
-        <Text style={styles.subtitle}>
-          Your AI Christian Counselor
-        </Text>
+        <Text style={styles.welcomeText}>Welcome to Solomon AI</Text>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Settings</Text>
-        <View style={styles.settingsContainer}>
-          <ListItem
-            containerStyle={styles.listItem}
-          >
-            <ListItem.Content>
-              <ListItem.Title style={styles.listItemTitle}>Push Notifications</ListItem.Title>
-              <ListItem.Subtitle style={styles.listItemSubtitle}>Receive important updates</ListItem.Subtitle>
-            </ListItem.Content>
-            <Switch
-              value={notifications}
-              onValueChange={handleNotificationsToggle}
-              trackColor={{ false: '#666980', true: '#10a37f' }}
-              thumbColor="#ffffff"
-            />
-          </ListItem>
-
-          <ListItem
-            containerStyle={styles.listItem}
-          >
-            <ListItem.Content>
-              <ListItem.Title style={styles.listItemTitle}>Daily Verse</ListItem.Title>
-              <ListItem.Subtitle style={styles.listItemSubtitle}>Receive daily Bible verses at 9 AM</ListItem.Subtitle>
-            </ListItem.Content>
-            <Switch
-              value={dailyVerse}
-              onValueChange={handleDailyVerseToggle}
-              trackColor={{ false: '#666980', true: '#10a37f' }}
-              thumbColor="#ffffff"
-              disabled={!notifications}
-            />
-          </ListItem>
-        </View>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>About Solomon</Text>
-        <View style={styles.aboutContainer}>
-          <Text style={styles.aboutText}>
-            Solomon is an AI-powered Christian counseling app designed to provide
-            biblical guidance and support. Drawing inspiration from King Solomon's
-            wisdom, we aim to help you navigate life's challenges through the lens
-            of Scripture.
-          </Text>
-          <View style={styles.featuresList}>
-            <View style={styles.featureItem}>
-              <Ionicons name="heart" size={20} color="#10a37f" />
-              <Text style={styles.featureText}>Compassionate Guidance</Text>
-            </View>
-            <View style={styles.featureItem}>
-              <Ionicons name="book" size={20} color="#10a37f" />
-              <Text style={styles.featureText}>Biblical Integration</Text>
-            </View>
-            <View style={styles.featureItem}>
-              <Ionicons name="shield" size={20} color="#10a37f" />
-              <Text style={styles.featureText}>Private & Secure</Text>
-            </View>
+        <Text style={styles.sectionTitle}>Notifications</Text>
+        
+        {/* Daily Devotional Settings */}
+        <View style={[styles.settingCard, styles.marginBottom]}>
+          <View style={styles.settingHeader}>
+            <Ionicons name="notifications-outline" size={24} color="#10a37f" />
+            <Text style={styles.settingTitle}>Daily Devotional Reminder</Text>
           </View>
-          <Text style={styles.versionText}>Version 1.0.0</Text>
+          <Text style={styles.settingDescription}>
+            Receive a daily notification to remind you to read your devotional and
+            spend time in prayer.
+          </Text>
+
+          <View style={styles.settingRow}>
+            <Text style={styles.settingLabel}>Enable Notifications</Text>
+            <Switch
+              value={devotionalEnabled}
+              onValueChange={toggleDevotionalSwitch}
+              color="#10a37f"
+            />
+          </View>
+
+          <View style={[styles.settingRow, !devotionalEnabled && styles.disabled]}>
+            <Text style={styles.settingLabel}>Reminder Time</Text>
+            {renderTimePicker(
+              'devotional',
+              devotionalTime,
+              devotionalEnabled,
+              showDevotionalTimePicker,
+              handleDevotionalTimeChange,
+              setShowDevotionalTimePicker
+            )}
+          </View>
+        </View>
+
+        {/* Daily Wisdom Settings */}
+        <View style={styles.settingCard}>
+          <View style={styles.settingHeader}>
+            <Ionicons name="book-outline" size={24} color="#10a37f" />
+            <Text style={styles.settingTitle}>Daily Wisdom Verse</Text>
+          </View>
+          <Text style={styles.settingDescription}>
+            Receive a daily Bible verse about wisdom, love, and faith to inspire your day.
+          </Text>
+
+          <View style={styles.settingRow}>
+            <Text style={styles.settingLabel}>Enable Notifications</Text>
+            <Switch
+              value={wisdomEnabled}
+              onValueChange={toggleWisdomSwitch}
+              color="#10a37f"
+            />
+          </View>
+
+          <View style={[styles.settingRow, !wisdomEnabled && styles.disabled]}>
+            <Text style={styles.settingLabel}>Reminder Time</Text>
+            {renderTimePicker(
+              'wisdom',
+              wisdomTime,
+              wisdomEnabled,
+              showWisdomTimePicker,
+              handleWisdomTimeChange,
+              setShowWisdomTimePicker
+            )}
+          </View>
         </View>
       </View>
 
-      <View style={styles.footer}>
-        <Text style={styles.footerLink}>Privacy Policy</Text>
-        <Text style={styles.footerDot}>•</Text>
-        <Text style={styles.footerLink}>Terms of Service</Text>
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>About</Text>
+        <View style={styles.settingCard}>
+          <View style={styles.settingHeader}>
+            <Ionicons name="information-circle-outline" size={24} color="#10a37f" />
+            <Text style={styles.settingTitle}>App Information</Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Version</Text>
+            <Text style={styles.infoValue}>1.0.0</Text>
+          </View>
+        </View>
       </View>
     </ScrollView>
   );
@@ -163,108 +300,131 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#343541',
   },
-  profileHeader: {
-    padding: 20,
+  header: {
     alignItems: 'center',
-    backgroundColor: '#444654',
-    borderBottomWidth: 1,
-    borderBottomColor: '#202123',
+    padding: 20,
+    paddingTop: 30,
   },
   avatarContainer: {
-    width: 100,
-    height: 100,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 16,
   },
   welcomeText: {
+    fontSize: 24,
     color: '#ffffff',
-    marginBottom: 5,
-    textAlign: 'center',
-  },
-  subtitle: {
-    color: '#666980',
-    fontSize: 16,
-    textAlign: 'center',
+    fontWeight: 'bold',
   },
   section: {
-    marginTop: 20,
-    paddingHorizontal: 15,
+    padding: 16,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#ffffff',
-    marginBottom: 10,
-    marginLeft: 5,
+    marginBottom: 16,
   },
-  settingsContainer: {
+  settingCard: {
     backgroundColor: '#444654',
     borderRadius: 12,
-    overflow: 'hidden',
+    padding: 16,
   },
-  listItem: {
-    backgroundColor: 'transparent',
-    borderBottomWidth: 1,
-    borderBottomColor: '#202123',
-    paddingVertical: 12,
+  marginBottom: {
+    marginBottom: 16,
   },
-  listItemTitle: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  listItemSubtitle: {
-    color: '#666980',
-    fontSize: 14,
-    marginTop: 4,
-  },
-  aboutContainer: {
-    backgroundColor: '#444654',
-    borderRadius: 12,
-    padding: 15,
-  },
-  aboutText: {
-    fontSize: 15,
-    color: '#ffffff',
-    lineHeight: 22,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  featuresList: {
-    marginTop: 10,
-  },
-  featureItem: {
+  settingHeader: {
     flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  settingTitle: {
+    fontSize: 18,
+    color: '#ffffff',
+    fontWeight: 'bold',
+    marginLeft: 12,
+  },
+  settingDescription: {
+    fontSize: 14,
+    color: '#666980',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#343541',
+  },
+  settingLabel: {
+    fontSize: 16,
+    color: '#ffffff',
+  },
+  timePickerWrapper: {
+    alignItems: 'flex-end',
+    position: 'relative',
+  },
+  inlinePickerContainer: {
+    position: 'absolute',
+    right: 0,
+    top: -160,
+    backgroundColor: '#343541',
+    borderRadius: 8,
+    overflow: 'hidden',
+    width: 280,
+    zIndex: 1000,
+  },
+  pickerWrapper: {
+    height: 160,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inlineTimePicker: {
+    width: 280,
+    height: 160,
+    backgroundColor: 'transparent',
+  },
+  doneButton: {
+    alignItems: 'center',
+    padding: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#444654',
+  },
+  doneButtonText: {
+    color: '#10a37f',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  timeButton: {
+    backgroundColor: 'transparent',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  timeLabel: {
+    fontSize: 14,
+    color: '#666980',
+    textAlign: 'right',
+  },
+  disabled: {
+    opacity: 0.5,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 8,
-    paddingHorizontal: 10,
   },
-  featureText: {
+  infoLabel: {
+    fontSize: 16,
     color: '#ffffff',
-    marginLeft: 10,
-    fontSize: 15,
   },
-  versionText: {
-    fontSize: 14,
+  infoValue: {
+    fontSize: 16,
     color: '#666980',
+  },
+  loadingText: {
+    color: '#ffffff',
     textAlign: 'center',
     marginTop: 20,
-  },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-    marginTop: 10,
-  },
-  footerLink: {
-    color: '#10a37f',
-    fontSize: 14,
-  },
-  footerDot: {
-    color: '#666980',
-    marginHorizontal: 8,
   },
 });
 

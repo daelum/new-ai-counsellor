@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ThemeProvider, createTheme } from '@rneui/themed';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -11,8 +12,40 @@ import HomeScreen from './src/screens/HomeScreen';
 import CounselingScreen from './src/screens/CounselingScreen';
 import BibleScreen from './src/screens/BibleScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import DevotionalScreen from './src/screens/DevotionalScreen';
+import PrayerBoardScreen from './src/screens/PrayerBoardScreen';
 
 const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator();
+
+function HomeStack() {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerStyle: {
+          backgroundColor: '#202123',
+        },
+        headerTintColor: '#ffffff',
+      }}
+    >
+      <Stack.Screen 
+        name="HomeScreen" 
+        component={HomeScreen}
+        options={{
+          title: 'Solomon AI',
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen 
+        name="PrayerBoard" 
+        component={PrayerBoardScreen}
+        options={{
+          title: 'Prayer Board',
+        }}
+      />
+    </Stack.Navigator>
+  );
+}
 
 // Custom theme that matches ChatGPT's aesthetic
 const theme = createTheme({
@@ -79,25 +112,31 @@ export default function App() {
               tabBarActiveTintColor: '#10a37f',
               tabBarInactiveTintColor: '#666980',
               tabBarIcon: ({ focused, color, size }) => {
-                let iconName;
+                let iconName: keyof typeof Ionicons.glyphMap;
+                
                 if (route.name === 'Home') {
                   iconName = focused ? 'home' : 'home-outline';
                 } else if (route.name === 'Counseling') {
                   iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
                 } else if (route.name === 'Bible') {
                   iconName = focused ? 'book' : 'book-outline';
+                } else if (route.name === 'Devotional') {
+                  iconName = focused ? 'heart' : 'heart-outline';
                 } else if (route.name === 'Profile') {
                   iconName = focused ? 'person' : 'person-outline';
+                } else {
+                  iconName = 'help-outline';
                 }
+                
                 return <Ionicons name={iconName} size={size} color={color} />;
               },
             })}
           >
             <Tab.Screen 
               name="Home" 
-              component={HomeScreen}
+              component={HomeStack}
               options={{
-                title: 'Solomon AI',
+                headerShown: false,
               }}
             />
             <Tab.Screen 
@@ -112,6 +151,13 @@ export default function App() {
               component={BibleScreen}
               options={{
                 title: 'Bible',
+              }}
+            />
+            <Tab.Screen 
+              name="Devotional" 
+              component={DevotionalScreen}
+              options={{
+                title: 'Devotional',
               }}
             />
             <Tab.Screen 
