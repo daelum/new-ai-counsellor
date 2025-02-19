@@ -16,17 +16,32 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.solomon.ai"
+      "bundleIdentifier": "com.solomon.ai",
+      "infoPlist": {
+        "UIBackgroundModes": ["remote-notification"],
+        "NSUserNotificationUsageDescription": "We use notifications to send you daily Bible verses and important updates."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.solomon.ai"
+      "package": "com.solomon.ai",
+      "permissions": ["NOTIFICATIONS", "SCHEDULE_EXACT_ALARM", "USE_EXACT_ALARM"]
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#10a37f",
+          "sounds": ["./assets/notification-sound.wav"]
+        }
+      ]
+    ]
   }
 }

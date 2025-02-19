@@ -20,7 +20,7 @@ class AIService {
     this.conversationHistory = [
       {
         role: "system",
-        content: `You are a trained counselor. Your name is Solomon. You're also an expert in the NIV Bible. When somebody talks to you or asks you questions, you should respond as a trained counselor providing guidance and thoughtful insights, as well as a reference. Each time somebody responds, when appropriate, you should provide a reference from the NIV Bible. You should also provide a verse from the Bible that is relevant to the conversation. You should always ask a follow up question to the user, a question that will help them further explore their own thoughts and feelings. Don't sign your responses.
+        content: `You are a trained counselor. Your name is Solomon. You're also an expert in the NIV Bible. When somebody talks to you or asks you questions, you should respond as a trained counselor providing guidance and thoughtful insights. Each time somebody responds, when appropriate, you should provide a reference from the NIV Bible. You should also provide a verse from the Bible that is relevant to the conversation. You should always ask a follow up question to the user, a question that will help them further explore their own thoughts and feelings. Don't sign your responses. If you are unable to provide the help the user is looking for, do not say 'I'm Really sorry that you're feeling this way, but I'm unable to provide the help that you need. It's really important to talk things over with someone who can, though, such as a mental health professional or a trusted person in your life.", instead provide a bible reference that may comfort them then ask them more about their situation.
 
 Additional guidelines for your responses:
 1. Always maintain a compassionate and understanding tone
@@ -101,6 +101,82 @@ Additional guidelines for your responses:
     } catch (error) {
       console.error('Error in Bible verse analysis:', error);
       throw new Error('Failed to analyze Bible verse. Please try again later.');
+    }
+  }
+
+  public async searchBibleVerses(searchQuery: string): Promise<Array<{verse: string, reference: string}>> {
+    try {
+      console.log('AIService: Starting Bible verse search for:', searchQuery);
+      
+      const response = await this.openai.chat.completions.create({
+        model: "gpt-4",
+        messages: [
+          {
+            role: "system",
+            content: `You are a Bible expert specializing in the NIV translation. When given a search query, return 3 relevant Bible verses that best match the query. Return ONLY a JSON array of objects, each with 'verse' and 'reference' fields. Format: [{"verse": "full verse text", "reference": "Book Chapter:Verse"}]. No additional text or explanation.`
+          },
+          {
+            role: "user",
+            content: `Find Bible verses about: ${searchQuery}`
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 500,
+      });
+
+      const content = response.choices[0]?.message?.content;
+      console.log('AIService: Raw API response:', content);
+
+      if (!content) {
+        throw new Error('No response from AI');
+      }
+
+      try {
+        // First attempt: direct JSON parse
+        const verses = JSON.parse(content);
+        console.log('AIService: Parsed verses:', verses);
+        if (Array.isArray(verses)) {
+          return verses;
+        }
+      } catch (parseError) {
+        console.log('AIService: Initial JSON parse failed, trying to extract JSON from text');
+        // Second attempt: try to find JSON array in the text
+        const jsonMatch = content.match(/\[.*\]/s);
+        if (jsonMatch) {
+          try {
+            const verses = JSON.parse(jsonMatch[0]);
+            console.log('AIService: Parsed verses from extracted JSON:', verses);
+            if (Array.isArray(verses)) {
+              return verses;
+            }
+          } catch (e) {
+            console.error('AIService: Failed to parse extracted JSON:', e);
+          }
+        }
+      }
+
+      // If all parsing attempts fail, try to extract individual verse objects
+      const versesMatch = content.match(/\{[^}]+\}/g);
+      if (versesMatch) {
+        const verses = versesMatch
+          .map(match => {
+            try {
+              return JSON.parse(match);
+            } catch {
+              return null;
+            }
+          })
+          .filter(Boolean);
+        
+        console.log('AIService: Parsed individual verse objects:', verses);
+        return verses;
+      }
+
+      console.error('AIService: Could not parse any verses from response');
+      return [];
+    } catch (error) {
+      console.error('AIService: Error in Bible verse search:', error);
+      throw new Error('Failed to search Bible verses. Please try again later.');
     }
   }
 

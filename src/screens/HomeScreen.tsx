@@ -1,42 +1,89 @@
 import React from 'react';
-import { View, ScrollView, StyleSheet } from 'react-native';
+import { View, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { Text, Card, Button } from '@rneui/themed';
+import { useNavigation } from '@react-navigation/native';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { Ionicons } from '@expo/vector-icons';
+
+type RootStackParamList = {
+  Home: undefined;
+  Counseling: undefined;
+  Bible: undefined;
+  Profile: undefined;
+};
+
+type NavigationProp = BottomTabNavigationProp<RootStackParamList>;
 
 const HomeScreen = () => {
+  const navigation = useNavigation<NavigationProp>();
+
   return (
     <ScrollView style={styles.container}>
-      <Card containerStyle={styles.card}>
-        <Card.Title h3>Welcome to Solomon AI</Card.Title>
-        <Card.Divider />
-        <Text style={styles.description}>
-          Your personal AI Christian counselor, inspired by the wisdom of King Solomon.
-          Get biblical guidance and support for life's challenges.
+      <View style={styles.header}>
+        <Text h3 style={styles.title}>Welcome to Solomon AI</Text>
+        <Text style={styles.subtitle}>
+          Your personal AI Christian counselor, inspired by the wisdom of King Solomon
         </Text>
-      </Card>
+      </View>
 
-      <Card containerStyle={styles.card}>
-        <Card.Title h4>How can I help you today?</Card.Title>
-        <Card.Divider />
-        <Button
-          title="Start Counseling Session"
-          buttonStyle={styles.button}
-          onPress={() => {/* Navigation will be added */}}
-        />
-        <Button
-          title="Read Bible Verses"
-          buttonStyle={[styles.button, styles.secondaryButton]}
-          onPress={() => {/* Navigation will be added */}}
-        />
-      </Card>
+      <View style={styles.actionsContainer}>
+        <TouchableOpacity 
+          style={styles.actionCard}
+          onPress={() => navigation.navigate('Counseling')}
+        >
+          <View style={styles.actionIconContainer}>
+            <Ionicons name="chatbubbles" size={24} color="#10a37f" />
+          </View>
+          <Text style={styles.actionTitle}>Start Counseling</Text>
+          <Text style={styles.actionDescription}>
+            Begin a conversation with Solomon for guidance and support
+          </Text>
+        </TouchableOpacity>
 
-      <Card containerStyle={styles.card}>
-        <Card.Title h4>Daily Wisdom</Card.Title>
-        <Card.Divider />
-        <Text style={styles.verse}>
+        <TouchableOpacity 
+          style={styles.actionCard}
+          onPress={() => navigation.navigate('Bible')}
+        >
+          <View style={styles.actionIconContainer}>
+            <Ionicons name="book" size={24} color="#10a37f" />
+          </View>
+          <Text style={styles.actionTitle}>Explore Scripture</Text>
+          <Text style={styles.actionDescription}>
+            Search and study Bible verses for inspiration
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.quoteContainer}>
+        <Text style={styles.quoteTitle}>Daily Wisdom</Text>
+        <Text style={styles.quoteText}>
           "If any of you lacks wisdom, you should ask God, who gives generously to all
-          without finding fault, and it will be given to you." - James 1:5 (NIV)
+          without finding fault, and it will be given to you."
         </Text>
-      </Card>
+        <Text style={styles.quoteReference}>James 1:5 (NIV)</Text>
+      </View>
+
+      <View style={styles.featuresContainer}>
+        <Text style={styles.featuresTitle}>Features</Text>
+        <View style={styles.featuresList}>
+          <View style={styles.featureItem}>
+            <Ionicons name="heart" size={20} color="#10a37f" />
+            <Text style={styles.featureText}>Compassionate AI Counseling</Text>
+          </View>
+          <View style={styles.featureItem}>
+            <Ionicons name="book" size={20} color="#10a37f" />
+            <Text style={styles.featureText}>Biblical Integration</Text>
+          </View>
+          <View style={styles.featureItem}>
+            <Ionicons name="shield" size={20} color="#10a37f" />
+            <Text style={styles.featureText}>Safe and Private Space</Text>
+          </View>
+          <View style={styles.featureItem}>
+            <Ionicons name="infinite" size={20} color="#10a37f" />
+            <Text style={styles.featureText}>24/7 Availability</Text>
+          </View>
+        </View>
+      </View>
     </ScrollView>
   );
 };
@@ -44,40 +91,105 @@ const HomeScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#343541',
   },
-  card: {
-    borderRadius: 10,
-    marginBottom: 15,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+  header: {
+    padding: 20,
+    paddingTop: 30,
+    alignItems: 'center',
   },
-  description: {
-    fontSize: 16,
-    color: '#333',
+  title: {
+    color: '#ffffff',
     textAlign: 'center',
-    marginBottom: 15,
+    marginBottom: 10,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#666980',
+    textAlign: 'center',
     lineHeight: 24,
   },
-  button: {
-    borderRadius: 8,
-    marginVertical: 5,
-    backgroundColor: '#6200ee',
-    paddingVertical: 12,
+  actionsContainer: {
+    padding: 15,
   },
-  secondaryButton: {
-    backgroundColor: '#03dac6',
+  actionCard: {
+    backgroundColor: '#444654',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 15,
   },
-  verse: {
+  actionIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(16, 163, 127, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  actionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginBottom: 8,
+  },
+  actionDescription: {
+    fontSize: 14,
+    color: '#666980',
+    lineHeight: 20,
+  },
+  quoteContainer: {
+    backgroundColor: '#444654',
+    margin: 15,
+    padding: 20,
+    borderRadius: 12,
+  },
+  quoteTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  quoteText: {
     fontSize: 16,
+    color: '#ffffff',
     fontStyle: 'italic',
-    color: '#666',
     textAlign: 'center',
-    marginVertical: 10,
     lineHeight: 24,
+    marginBottom: 8,
+  },
+  quoteReference: {
+    fontSize: 14,
+    color: '#10a37f',
+    textAlign: 'center',
+  },
+  featuresContainer: {
+    padding: 15,
+    paddingTop: 5,
+  },
+  featuresTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginBottom: 15,
+  },
+  featuresList: {
+    backgroundColor: '#444654',
+    borderRadius: 12,
+    padding: 15,
+  },
+  featureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#343541',
+  },
+  featureText: {
+    fontSize: 16,
+    color: '#ffffff',
+    marginLeft: 12,
   },
 });
 
