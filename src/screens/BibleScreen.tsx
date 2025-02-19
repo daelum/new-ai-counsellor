@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, Platform } from 'react-native';
+import { View, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, Platform, Share } from 'react-native';
 import { Text, SearchBar } from '@rneui/themed';
 import { Ionicons } from '@expo/vector-icons';
 import AIService from '../services/AIService';
@@ -102,6 +102,26 @@ const BibleScreen = () => {
     }
   };
 
+  const handleShare = async (verse: BibleVerse | DetailedVerse) => {
+    try {
+      let shareContent = `${verse.verse}\n\n- ${verse.reference}`;
+      
+      if ('meaning' in verse) {
+        // If it's a DetailedVerse, include the meaning and application
+        shareContent += `\n\nMeaning:\n${verse.meaning}\n\nLife Application:\n${verse.application}`;
+      }
+      
+      shareContent += '\n\nShared from Solomon AI';
+      
+      await Share.share({
+        message: shareContent,
+        title: 'Share Bible Verse'
+      });
+    } catch (error) {
+      console.error('Error sharing verse:', error);
+    }
+  };
+
   const renderDetailModal = () => (
     <Modal
       visible={isDetailModalVisible}
@@ -119,6 +139,14 @@ const BibleScreen = () => {
               <Ionicons name="chevron-back" size={24} color="#10a37f" />
               <Text style={styles.backButtonText}>Back</Text>
             </TouchableOpacity>
+            {selectedVerse && (
+              <TouchableOpacity
+                style={styles.shareButton}
+                onPress={() => handleShare(selectedVerse)}
+              >
+                <Ionicons name="share-outline" size={24} color="#10a37f" />
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={styles.closeButton}
               onPress={() => setIsDetailModalVisible(false)}
@@ -189,14 +217,21 @@ const BibleScreen = () => {
     }
 
     return searchResults.map((result, index) => (
-      <TouchableOpacity
-        key={index}
-        style={styles.resultCard}
-        onPress={() => handleVersePress(result)}
-      >
-        <Text style={styles.verseText}>{result.verse}</Text>
-        <Text style={styles.referenceText}>{result.reference}</Text>
-      </TouchableOpacity>
+      <View key={index} style={styles.resultCard}>
+        <TouchableOpacity
+          style={styles.resultContent}
+          onPress={() => handleVersePress(result)}
+        >
+          <Text style={styles.verseText}>{result.verse}</Text>
+          <Text style={styles.referenceText}>{result.reference}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.shareButton}
+          onPress={() => handleShare(result)}
+        >
+          <Ionicons name="share-outline" size={24} color="#10a37f" />
+        </TouchableOpacity>
+      </View>
     ));
   };
 
@@ -346,8 +381,13 @@ const styles = StyleSheet.create({
   resultCard: {
     backgroundColor: '#444654',
     borderRadius: 12,
-    padding: 15,
     marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  resultContent: {
+    flex: 1,
+    padding: 15,
   },
   verseText: {
     fontSize: 16,
@@ -459,6 +499,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#ffffff',
     lineHeight: 24,
+  },
+  shareButton: {
+    padding: 15,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 
