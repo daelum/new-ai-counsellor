@@ -18,6 +18,9 @@ import {
   query,
   orderBy,
   getDoc,
+  where,
+  Timestamp,
+  deleteDoc,
 } from 'firebase/firestore';
 import {
   FIREBASE_API_KEY,
@@ -56,9 +59,12 @@ export interface Prayer {
   userId: string;
   username: string;
   content: string;
-  timestamp: Date;
+  timestamp: number;
   prayerCount: number;
   prayedBy: string[];
+  expiresAt: {
+    toDate: () => Date;
+  };
 }
 
 class FirebaseService {
@@ -142,27 +148,81 @@ class FirebaseService {
   }
 
   async getAllPrayers(): Promise<Prayer[]> {
-    const prayersRef = collection(db, 'prayers');
-    const q = query(prayersRef, orderBy('timestamp', 'desc'));
-    const querySnapshot = await getDocs(q);
+    try {
+      console.log('Fetching prayers from Firestore...');
+      const prayersRef = collection(db, 'prayers');
+      const q = query(prayersRef, orderBy('timestamp', 'desc'));
+      const querySnapshot = await getDocs(q);
+      
+      console.log('Found prayers:', querySnapshot.size);
+      
+      const prayers = querySnapshot.docs
+        .map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            userId: data.userId,
+            username: data.username,
+            content: data.content,
+            timestamp: data.timestamp,
+            prayerCount: data.prayerCount || 0,
+            prayedBy: data.prayedBy || [],
+            expiresAt: data.expiresAt,
+          } as Prayer;
+        })
+        .filter(prayer => prayer.content && prayer.content.trim() !== ''); // Filter out empty prayers
 
-    return querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      timestamp: doc.data().timestamp.toDate(),
-    })) as Prayer[];
+      console.log('Processed prayers:', prayers.length);
+      return prayers;
+    } catch (error) {
+      console.error('Error in getAllPrayers:', error);
+      throw error;
+    }
   }
 
-  async addPrayer(prayer: Omit<Prayer, 'id'>): Promise<Prayer> {
-    const docRef = await addDoc(collection(db, 'prayers'), {
-      ...prayer,
-      timestamp: new Date(),
-    });
+  async addPrayer(prayer: Omit<Prayer, 'id' | 'expiresAt'>): Promise<void> {
+    try {
+      console.log('Adding new prayer:', prayer);
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
 
-    return {
-      id: docRef.id,
-      ...prayer,
-    };
+      const newPrayer = {
+        ...prayer,
+        timestamp: now.getTime(),
+        expiresAt: Timestamp.fromDate(expiresAt),
+        prayerCount: 0,
+        prayedBy: [],
+      };
+
+      console.log('Formatted prayer for Firestore:', newPrayer);
+      const docRef = await addDoc(collection(db, 'prayers'), newPrayer);
+      console.log('Prayer added with ID:', docRef.id);
+    } catch (error) {
+      console.error('Error in addPrayer:', error);
+      console.error('Error adding prayer:', error);
+      throw error;
+    }
+  }
+
+  async getPrayers(): Promise<Prayer[]> {
+    try {
+      const now = new Date();
+      const q = query(
+        collection(db, 'prayers'),
+        where('expiresAt', '>', Timestamp.fromDate(now)),
+        orderBy('expiresAt', 'asc'),
+        orderBy('timestamp', 'desc')
+      );
+      
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Prayer[];
+    } catch (error) {
+      console.error('Error getting prayers:', error);
+      throw error;
+    }
   }
 
   async updatePrayerCount(prayerId: string, userId: string, isPraying: boolean): Promise<void> {
@@ -186,6 +246,30 @@ class FirebaseService {
       prayerCount: prayedBy.size,
       prayedBy: Array.from(prayedBy),
     });
+  }
+
+  async deletePrayer(prayerId: string, userId: string): Promise<void> {
+    try {
+      const prayerRef = doc(db, 'prayers', prayerId);
+      const prayerDoc = await getDoc(prayerRef);
+      
+      if (!prayerDoc.exists()) {
+        throw new Error('Prayer not found');
+      }
+
+      const prayer = prayerDoc.data() as Prayer;
+      
+      // Verify the user owns this prayer
+      if (prayer.userId !== userId) {
+        throw new Error('Unauthorized: You can only delete your own prayers');
+      }
+
+      await deleteDoc(prayerRef);
+      console.log('Prayer deleted successfully:', prayerId);
+    } catch (error) {
+      console.error('Error deleting prayer:', error);
+      throw error;
+    }
   }
 
   async logout(): Promise<void> {

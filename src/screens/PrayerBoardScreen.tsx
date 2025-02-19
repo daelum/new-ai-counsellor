@@ -13,6 +13,7 @@ import { Text, Button } from '@rneui/themed';
 import { Ionicons } from '@expo/vector-icons';
 import FirebaseService, { Prayer } from '../services/FirebaseService';
 import { useUser } from '../contexts/UserContext';
+import { formatDistance } from 'date-fns';
 
 const PrayerBoardScreen = () => {
   const { user } = useUser();
@@ -20,6 +21,7 @@ const PrayerBoardScreen = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const [newPrayer, setNewPrayer] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadPrayers();
@@ -27,10 +29,14 @@ const PrayerBoardScreen = () => {
 
   const loadPrayers = async () => {
     try {
+      console.log('Loading prayers...');
+      setError(null);
       const prayers = await FirebaseService.getAllPrayers();
+      console.log('Prayers loaded:', prayers.length);
       setPrayerRequests(prayers);
     } catch (error) {
       console.error('Error loading prayers:', error);
+      setError('Failed to load prayers. Please try again later.');
       Alert.alert('Error', 'Failed to load prayers. Please try again later.');
     } finally {
       setIsLoading(false);
@@ -47,11 +53,11 @@ const PrayerBoardScreen = () => {
 
     try {
       setIsLoading(true);
-      const prayer: Omit<Prayer, 'id'> = {
+      const prayer: Omit<Prayer, 'id' | 'expiresAt'> = {
         userId: user.id,
         username: user.username,
         content: newPrayer,
-        timestamp: new Date(),
+        timestamp: Date.now(),
         prayerCount: 0,
         prayedBy: [],
       };
@@ -85,10 +91,114 @@ const PrayerBoardScreen = () => {
     }
   };
 
+  const handleDeletePrayer = async (prayerId: string) => {
+    if (!user) return;
+
+    try {
+      Alert.alert(
+        'Delete Prayer',
+        'Are you sure you want to delete this prayer request?',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              setIsLoading(true);
+              await FirebaseService.deletePrayer(prayerId, user.id);
+              await loadPrayers();
+            },
+          },
+        ],
+      );
+    } catch (error) {
+      console.error('Error deleting prayer:', error);
+      Alert.alert('Error', 'Failed to delete prayer. Please try again later.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const formatExpirationTime = (expiresAt: any) => {
+    if (!expiresAt || !expiresAt.toDate) {
+      return 'Expires soon';
+    }
+    try {
+      const expirationDate = expiresAt.toDate();
+      return `Expires ${formatDistance(expirationDate, new Date(), { addSuffix: true })}`;
+    } catch (error) {
+      return 'Expires soon';
+    }
+  };
+
+  const renderPrayer = (request: Prayer) => (
+    <View key={request.id} style={styles.prayerCard}>
+      <View style={styles.prayerHeader}>
+        <Text style={styles.username}>{request.username}</Text>
+        <View style={styles.headerRight}>
+          <Text style={styles.timestamp}>
+            {new Date(request.timestamp).toLocaleDateString()}
+          </Text>
+          {request.userId === user?.id && (
+            <TouchableOpacity
+              onPress={() => handleDeletePrayer(request.id)}
+              style={styles.deleteButton}
+            >
+              <Ionicons name="trash-outline" size={20} color="#dc3545" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+      <Text style={styles.prayerContent}>{request.content}</Text>
+      <View style={styles.prayerFooter}>
+        <Text style={styles.userName}>{request.username}</Text>
+        <Text style={styles.expiresIn}>{formatExpirationTime(request.expiresAt)}</Text>
+      </View>
+      <TouchableOpacity
+        style={[
+          styles.prayButton,
+          request.prayedBy.includes(user?.id || '') && styles.prayButtonActive,
+        ]}
+        onPress={() => handlePrayerReaction(request.id)}
+      >
+        <Ionicons
+          name="hand-right"
+          size={20}
+          color={request.prayedBy.includes(user?.id || '') ? '#10a37f' : '#666980'}
+        />
+        <Text
+          style={[
+            styles.prayButtonText,
+            request.prayedBy.includes(user?.id || '') && styles.prayButtonTextActive,
+          ]}
+        >
+          🙏 {request.prayerCount} Praying
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#10a37f" />
+        <Text style={styles.loadingText}>Loading prayers...</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorText}>{error}</Text>
+        <Button
+          title="Try Again"
+          onPress={loadPrayers}
+          containerStyle={styles.retryButton}
+        />
       </View>
     );
   }
@@ -101,38 +211,14 @@ const PrayerBoardScreen = () => {
           <Text style={styles.subtitle}>Share and pray for others in the community</Text>
         </View>
 
-        {prayerRequests.map((request) => (
-          <View key={request.id} style={styles.prayerCard}>
-            <View style={styles.prayerHeader}>
-              <Text style={styles.username}>{request.username}</Text>
-              <Text style={styles.timestamp}>
-                {new Date(request.timestamp).toLocaleDateString()}
-              </Text>
-            </View>
-            <Text style={styles.prayerContent}>{request.content}</Text>
-            <TouchableOpacity
-              style={[
-                styles.prayButton,
-                request.prayedBy.includes(user?.id || '') && styles.prayButtonActive,
-              ]}
-              onPress={() => handlePrayerReaction(request.id)}
-            >
-              <Ionicons
-                name="hand-right"
-                size={20}
-                color={request.prayedBy.includes(user?.id || '') ? '#10a37f' : '#666980'}
-              />
-              <Text
-                style={[
-                  styles.prayButtonText,
-                  request.prayedBy.includes(user?.id || '') && styles.prayButtonTextActive,
-                ]}
-              >
-                🙏 {request.prayerCount} Praying
-              </Text>
-            </TouchableOpacity>
+        {prayerRequests.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No prayer requests yet.</Text>
+            <Text style={styles.emptySubtext}>Be the first to share a prayer request!</Text>
           </View>
-        ))}
+        ) : (
+          prayerRequests.map(renderPrayer)
+        )}
       </ScrollView>
 
       <TouchableOpacity
@@ -159,6 +245,9 @@ const PrayerBoardScreen = () => {
               value={newPrayer}
               onChangeText={setNewPrayer}
             />
+            <Text style={styles.expirationNotice}>
+              Your prayer request will be visible for one week. Feel free to repost it if you'd like continued prayers.
+            </Text>
             <View style={styles.modalButtons}>
               <Button
                 title="Cancel"
@@ -303,6 +392,72 @@ const styles = StyleSheet.create({
   modalButton: {
     flex: 1,
     marginHorizontal: 5,
+  },
+  expirationNotice: {
+    color: '#666980',
+    fontSize: 12,
+    textAlign: 'center',
+    marginBottom: 15,
+    fontStyle: 'italic',
+  },
+  prayerFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  userName: {
+    color: '#666980',
+    fontSize: 12,
+  },
+  expiresIn: {
+    color: '#666980',
+    fontSize: 12,
+    fontStyle: 'italic',
+  },
+  loadingText: {
+    color: '#ffffff',
+    marginTop: 10,
+    fontSize: 16,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#343541',
+    padding: 20,
+  },
+  errorText: {
+    color: '#ffffff',
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  retryButton: {
+    width: 200,
+  },
+  emptyContainer: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  emptyText: {
+    color: '#ffffff',
+    fontSize: 18,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  emptySubtext: {
+    color: '#666980',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  deleteButton: {
+    padding: 5,
   },
 });
 

@@ -4,6 +4,7 @@ import { Text, Switch, Button } from '@rneui/themed';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import NotificationService from '../services/NotificationService';
+import { useUser } from '../contexts/UserContext';
 
 const ProfileScreen = () => {
   const [devotionalEnabled, setDevotionalEnabled] = useState(false);
@@ -15,6 +16,7 @@ const ProfileScreen = () => {
   const [loading, setLoading] = useState(true);
 
   const notificationService = NotificationService.getInstance();
+  const { user, logout } = useUser();
 
   useEffect(() => {
     loadSettings();
@@ -108,6 +110,15 @@ const ProfileScreen = () => {
       );
     } catch (error) {
       console.error('Error updating notification:', error);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      // Navigation will be handled automatically by NavigationWrapper
+    } catch (error) {
+      console.error('Error logging out:', error);
     }
   };
 
@@ -291,6 +302,23 @@ const ProfileScreen = () => {
           </View>
         </View>
       </View>
+
+      <View style={styles.footer}>
+        <Button
+          title="Log Out"
+          onPress={handleLogout}
+          buttonStyle={styles.logoutButton}
+          titleStyle={styles.logoutButtonText}
+          icon={
+            <Ionicons
+              name="log-out-outline"
+              size={20}
+              color="#ffffff"
+              style={{ marginRight: 10 }}
+            />
+          }
+        />
+      </View>
     </ScrollView>
   );
 };
@@ -425,6 +453,20 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     textAlign: 'center',
     marginTop: 20,
+  },
+  footer: {
+    padding: 20,
+    paddingBottom: 40,
+    marginTop: 20,
+  },
+  logoutButton: {
+    backgroundColor: '#dc3545',
+    padding: 15,
+    borderRadius: 8,
+  },
+  logoutButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
 
