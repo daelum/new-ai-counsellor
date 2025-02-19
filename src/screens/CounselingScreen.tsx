@@ -78,7 +78,7 @@ const CounselingScreen = () => {
     // Show initial welcome message when component mounts
     const welcomeMessage: Message = {
       id: 'welcome',
-      text: "Hello, I am Solomon. This is a safe space for you to share anything that is on your mind. I am here to listen, support, and help you with whatever you would like to discuss.",
+      text: "Hello, I'm Solomon. This is a safe space for you. I'm here to listen, support, and help with whatever is on your mind. Feel free to type or start a voice chat.",
       sender: 'ai',
       timestamp: new Date(),
     };
@@ -210,6 +210,113 @@ const CounselingScreen = () => {
     </View>
   );
 
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: '#343541',
+    },
+    messagesContainer: {
+      flex: 1,
+    },
+    messagesContent: {
+      padding: 10,
+      paddingBottom: 20,
+    },
+    messageContainer: {
+      marginVertical: 5,
+      paddingHorizontal: 15,
+      paddingVertical: 10,
+    },
+    userMessageContainer: {
+      backgroundColor: '#444654',
+    },
+    aiMessageContainer: {
+      backgroundColor: '#343541',
+    },
+    messageContent: {
+      maxWidth: '100%',
+    },
+    messageText: {
+      fontSize: 16,
+      lineHeight: 24,
+    },
+    userMessageText: {
+      color: '#ffffff',
+    },
+    aiMessageText: {
+      color: '#ffffff',
+    },
+    loadingContainer: {
+      padding: 20,
+      alignItems: 'center',
+    },
+    inputContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 8,
+      paddingHorizontal: 12,
+      backgroundColor: '#202123',
+      borderTopWidth: 1,
+      borderTopColor: '#444654',
+    },
+    input: {
+      flex: 1,
+      paddingRight: 8,
+      backgroundColor: 'transparent',
+      paddingHorizontal: 0,
+      marginHorizontal: 0,
+      paddingVertical: 0,
+      marginVertical: 0,
+      borderBottomWidth: 0,
+      height: 40,
+    },
+    inputField: {
+      borderWidth: 1,
+      borderColor: '#444654',
+      borderRadius: 20,
+      paddingHorizontal: 15,
+      backgroundColor: '#343541',
+      minHeight: 40,
+      maxHeight: 100,
+      marginTop: 0,
+      marginBottom: 0,
+    },
+    inputText: {
+      color: '#ffffff',
+      fontSize: 16,
+    },
+    buttonsContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginLeft: 8,
+      height: 40,
+    },
+    iconButton: {
+      width: 40,
+      height: 40,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginLeft: 8,
+      borderRadius: 20,
+      backgroundColor: '#343541',
+      borderWidth: 1,
+      borderColor: '#444654',
+    },
+    recordingButton: {
+      backgroundColor: 'rgba(255, 59, 48, 0.1)',
+      borderColor: '#ff3b30',
+    },
+    activeIconButton: {
+      backgroundColor: '#10a37f',
+      borderColor: '#10a37f',
+    },
+    disabledIconButton: {
+      backgroundColor: '#343541',
+      borderColor: '#444654',
+      opacity: 0.5,
+    },
+  });
+
   return (
     <KeyboardAvoidingView 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -232,7 +339,7 @@ const CounselingScreen = () => {
 
       <View style={styles.inputContainer}>
         <Input
-          placeholder="Message Solomon..."
+          placeholder="What's On Your Mind?"
           value={inputText}
           onChangeText={setInputText}
           containerStyle={styles.input}
@@ -242,108 +349,41 @@ const CounselingScreen = () => {
           disabled={isLoading || isRecording}
           placeholderTextColor="#666980"
         />
-        <TouchableOpacity
-          style={[styles.iconButton, isRecording && styles.recordingButton]}
-          onPress={toggleRecording}
-          disabled={isLoading}
-        >
-          <Ionicons 
-            name={isRecording ? "stop-circle" : "mic"} 
-            size={24} 
-            color={isLoading ? "#666980" : "#10a37f"} 
-          />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.iconButton}
-          onPress={handleSend}
-          disabled={isLoading || !inputText.trim() || isRecording}
-        >
-          <Ionicons 
-            name="send" 
-            size={24} 
-            color={(!inputText.trim() || isLoading || isRecording) ? "#666980" : "#10a37f"} 
-          />
-        </TouchableOpacity>
+        <View style={styles.buttonsContainer}>
+          <TouchableOpacity
+            style={[
+              styles.iconButton,
+              isRecording && styles.recordingButton,
+              isLoading && styles.disabledIconButton
+            ]}
+            onPress={toggleRecording}
+            disabled={isLoading}
+          >
+            <Ionicons 
+              name={isRecording ? "stop-circle" : "mic"} 
+              size={22} 
+              color={isRecording ? "#ff3b30" : isLoading ? "#666980" : "#10a37f"} 
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.iconButton,
+              inputText.trim() && !isLoading && !isRecording && styles.activeIconButton,
+              (isLoading || !inputText.trim() || isRecording) && styles.disabledIconButton
+            ]}
+            onPress={handleSend}
+            disabled={isLoading || !inputText.trim() || isRecording}
+          >
+            <Ionicons 
+              name="send" 
+              size={20} 
+              color={(!inputText.trim() || isLoading || isRecording) ? "#666980" : "#ffffff"} 
+            />
+          </TouchableOpacity>
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#343541',
-  },
-  messagesContainer: {
-    flex: 1,
-  },
-  messagesContent: {
-    padding: 10,
-    paddingBottom: 20,
-  },
-  messageContainer: {
-    marginVertical: 5,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-  },
-  userMessageContainer: {
-    backgroundColor: '#444654',
-  },
-  aiMessageContainer: {
-    backgroundColor: '#343541',
-  },
-  messageContent: {
-    maxWidth: '100%',
-  },
-  messageText: {
-    fontSize: 16,
-    lineHeight: 24,
-  },
-  userMessageText: {
-    color: '#ffffff',
-  },
-  aiMessageText: {
-    color: '#ffffff',
-  },
-  loadingContainer: {
-    padding: 20,
-    alignItems: 'center',
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-    backgroundColor: '#202123',
-    borderTopWidth: 1,
-    borderTopColor: '#444654',
-  },
-  input: {
-    flex: 1,
-    paddingRight: 10,
-    backgroundColor: 'transparent',
-  },
-  inputField: {
-    borderWidth: 1,
-    borderColor: '#444654',
-    borderRadius: 8,
-    paddingHorizontal: 15,
-    backgroundColor: '#343541',
-    minHeight: 40,
-  },
-  inputText: {
-    color: '#ffffff',
-  },
-  iconButton: {
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 8,
-  },
-  recordingButton: {
-    backgroundColor: 'rgba(255, 59, 48, 0.1)',
-    borderRadius: 22,
-  },
-});
 
 export default CounselingScreen; 
