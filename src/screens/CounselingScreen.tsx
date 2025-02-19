@@ -41,6 +41,7 @@ const CounselingScreen = () => {
   const [previousConversations, setPreviousConversations] = useState<Conversation[]>([]);
   const [isLoadingConversations, setIsLoadingConversations] = useState(false);
   const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
+  const activeConversationRef = useRef<string | null>(null);
 
   // Update messagesRef whenever messages change
   useEffect(() => {
@@ -55,6 +56,10 @@ const CounselingScreen = () => {
       setIsRecording(isRecording);
       
       if (!isRecording) {
+        // Store the conversation context when recording stops
+        const conversationAtSend = currentConversation;
+        const conversationIdAtSend = activeConversationRef.current;
+
         try {
           setIsLoading(true);
           console.log('Stopping recording and waiting for result...');
@@ -65,30 +70,64 @@ const CounselingScreen = () => {
             const { transcription, aiResponse } = result;
             console.log('Adding messages to chat:', { transcription, aiResponse });
             
-            setMessages(prev => [
-              ...prev,
-              {
-                id: Date.now().toString(),
-                text: transcription.trim(),
-                sender: 'user',
-                timestamp: new Date(),
-              },
-              {
-                id: (Date.now() + 1).toString(),
-                text: aiResponse,
-                sender: 'ai',
-                timestamp: new Date(),
-              }
-            ]);
+            const userMessage: Message = {
+              id: Date.now().toString(),
+              text: transcription.trim(),
+              sender: 'user',
+              timestamp: new Date(),
+            };
+
+            const aiMessage: Message = {
+              id: (Date.now() + 1).toString(),
+              text: aiResponse,
+              sender: 'ai',
+              timestamp: new Date(),
+            };
+
+            // Only update UI if we're still in the same conversation
+            if (activeConversationRef.current === conversationIdAtSend) {
+              setMessages(prev => [...prev, userMessage, aiMessage]);
+            }
+
+            // Save messages to the original conversation
+            if (conversationAtSend) {
+              await FirebaseService.addMessage(
+                conversationAtSend.id,
+                userMessage.text,
+                'user',
+                auth.currentUser?.uid || ''
+              );
+              await FirebaseService.addMessage(
+                conversationAtSend.id,
+                aiMessage.text,
+                'assistant',
+                auth.currentUser?.uid || ''
+              );
+            }
           }
         } catch (error) {
           console.error('Error handling recording stop:', error);
-          setMessages(prev => [...prev, {
+          const errorMessage: Message = {
             id: Date.now().toString(),
             text: "I apologize, but I'm experiencing some difficulty processing your message. Please try again.",
             sender: 'ai',
             timestamp: new Date(),
-          }]);
+          };
+
+          // Only update UI if we're still in the same conversation
+          if (activeConversationRef.current === conversationIdAtSend) {
+            setMessages(prev => [...prev, errorMessage]);
+          }
+
+          // Save error message to the original conversation
+          if (conversationAtSend) {
+            await FirebaseService.addMessage(
+              conversationAtSend.id,
+              errorMessage.text,
+              'assistant',
+              auth.currentUser?.uid || ''
+            );
+          }
         } finally {
           setIsLoading(false);
         }
@@ -150,6 +189,7 @@ const CounselingScreen = () => {
         title
       );
       setCurrentConversation(conversation);
+      activeConversationRef.current = conversation.id;
       return conversation;
     } catch (error) {
       console.error('Failed to create conversation:', error);
@@ -186,6 +226,10 @@ const CounselingScreen = () => {
       timestamp: new Date(),
     };
 
+    // Store the conversation ID at the time the message is sent
+    const conversationAtSend = currentConversation;
+    const conversationIdAtSend = activeConversationRef.current;
+
     setMessages(prev => [...prev, userMessage]);
     setInputText('');
     setIsLoading(true);
@@ -203,10 +247,20 @@ const CounselingScreen = () => {
         timestamp: new Date(),
       };
 
-      setMessages(prev => [...prev, aiMessage]);
+      // Only update the messages in the UI if we're still in the same conversation
+      if (activeConversationRef.current === conversationIdAtSend) {
+        setMessages(prev => [...prev, aiMessage]);
+      }
       
-      // Save AI message
-      await saveMessage(aiMessage, 'assistant');
+      // Save AI message to the original conversation
+      if (conversationAtSend) {
+        await FirebaseService.addMessage(
+          conversationAtSend.id,
+          aiMessage.text,
+          'assistant',
+          auth.currentUser?.uid || ''
+        );
+      }
     } catch (error) {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -214,10 +268,21 @@ const CounselingScreen = () => {
         sender: 'ai',
         timestamp: new Date(),
       };
-      setMessages(prev => [...prev, errorMessage]);
+
+      // Only update the messages in the UI if we're still in the same conversation
+      if (activeConversationRef.current === conversationIdAtSend) {
+        setMessages(prev => [...prev, errorMessage]);
+      }
       
-      // Save error message
-      await saveMessage(errorMessage, 'assistant');
+      // Save error message to the original conversation
+      if (conversationAtSend) {
+        await FirebaseService.addMessage(
+          conversationAtSend.id,
+          errorMessage.text,
+          'assistant',
+          auth.currentUser?.uid || ''
+        );
+      }
     } finally {
       setIsLoading(false);
       setIsRecording(false);
@@ -228,46 +293,45 @@ const CounselingScreen = () => {
     if (isRecording) {
       await aiService.cancelRecording();
     } else {
+      // Store the conversation context when starting recording
+      const conversationAtSend = currentConversation;
+      const conversationIdAtSend = activeConversationRef.current;
+
       try {
-        setIsLoading(true);
-        const result = await aiService.startVoiceRecording();
-        
-        if (result) {
-          const { transcription, aiResponse } = result;
-          
-          const userMessage: Message = {
-            id: Date.now().toString(),
-            text: transcription.trim(),
-            sender: 'user',
-            timestamp: new Date(),
-          };
-
-          const aiMessage: Message = {
-            id: (Date.now() + 1).toString(),
-            text: aiResponse,
-            sender: 'ai',
-            timestamp: new Date(),
-          };
-
-          setMessages(prev => [...prev, userMessage, aiMessage]);
-
-          // Save both messages
-          await saveMessage(userMessage, 'user');
-          await saveMessage(aiMessage, 'assistant');
+        // Create a new conversation if one doesn't exist
+        if (!conversationAtSend && auth.currentUser?.uid) {
+          const newConversation = await createNewConversation();
+          if (newConversation) {
+            setCurrentConversation(newConversation);
+            activeConversationRef.current = newConversation.id;
+          }
         }
+
+        setIsLoading(true);
+        await aiService.startVoiceRecording();
       } catch (error) {
         console.error('Failed to start recording:', error);
         const errorMessage: Message = {
           id: Date.now().toString(),
-          text: "I apologize, but I'm experiencing some difficulty processing your message. Please try again.",
+          text: "I apologize, but I'm experiencing some difficulty with voice recording. Please try again.",
           sender: 'ai',
           timestamp: new Date(),
         };
-        setMessages(prev => [...prev, errorMessage]);
+
+        // Only update UI if we're still in the same conversation
+        if (activeConversationRef.current === conversationIdAtSend) {
+          setMessages(prev => [...prev, errorMessage]);
+        }
         
-        // Save error message
-        await saveMessage(errorMessage, 'assistant');
-      } finally {
+        // Save error message to the original conversation
+        if (conversationAtSend) {
+          await FirebaseService.addMessage(
+            conversationAtSend.id,
+            errorMessage.text,
+            'assistant',
+            auth.currentUser?.uid || ''
+          );
+        }
         setIsLoading(false);
       }
     }
@@ -342,6 +406,11 @@ const CounselingScreen = () => {
       }));
 
       setMessages(formattedMessages);
+      const conversation = previousConversations.find(c => c.id === conversationId);
+      if (conversation) {
+        setCurrentConversation(conversation);
+        activeConversationRef.current = conversation.id;
+      }
       setShowConversationsModal(false);
     } catch (error) {
       console.error('Error loading conversation:', error);
@@ -366,23 +435,83 @@ const CounselingScreen = () => {
     }
   };
 
+  const handleDeleteConversation = async (conversationId: string) => {
+    if (!auth.currentUser?.uid) return;
+
+    try {
+      setIsLoadingConversations(true);
+      await FirebaseService.deleteConversation(conversationId, auth.currentUser.uid);
+      
+      // Update the local state to remove the deleted conversation
+      setPreviousConversations(prev => prev.filter(conv => conv.id !== conversationId));
+      
+      // If the deleted conversation was the current one, reset the current conversation
+      if (currentConversation?.id === conversationId) {
+        setCurrentConversation(null);
+        activeConversationRef.current = null;
+        startNewChat();
+      }
+    } catch (error) {
+      console.error('Error deleting conversation:', error);
+      Alert.alert('Error', 'Failed to delete conversation. Please try again later.');
+    } finally {
+      setIsLoadingConversations(false);
+    }
+  };
+
   const renderConversationItem = (conversation: Conversation) => (
     <ListItem
       key={conversation.id}
-      onPress={() => loadConversation(conversation.id)}
       containerStyle={styles.conversationItem}
     >
       <ListItem.Content>
-        <ListItem.Title style={styles.conversationTitle}>
-          {conversation.title}
-        </ListItem.Title>
-        <ListItem.Subtitle style={styles.conversationSubtitle}>
-          {`${conversation.messageCount} messages • ${formatDistance(conversation.lastUpdated.toDate(), new Date(), { addSuffix: true })}`}
-        </ListItem.Subtitle>
+        <TouchableOpacity 
+          onPress={() => loadConversation(conversation.id)}
+          style={{ flex: 1, marginRight: 16 }}
+        >
+          <ListItem.Title style={styles.conversationTitle}>
+            {conversation.title}
+          </ListItem.Title>
+          <ListItem.Subtitle style={styles.conversationSubtitle}>
+            {`${conversation.messageCount} messages • ${formatDistance(conversation.lastUpdated.toDate(), new Date(), { addSuffix: true })}`}
+          </ListItem.Subtitle>
+        </TouchableOpacity>
       </ListItem.Content>
-      <ListItem.Chevron color="#666980" />
+      <TouchableOpacity
+        style={{ padding: 8, marginLeft: 8 }}
+        onPress={() => {
+          Alert.alert(
+            'Delete Conversation',
+            'Are you sure you want to delete this conversation? This action cannot be undone.',
+            [
+              {
+                text: 'Cancel',
+                style: 'cancel',
+              },
+              {
+                text: 'Delete',
+                style: 'destructive',
+                onPress: () => handleDeleteConversation(conversation.id),
+              },
+            ],
+          );
+        }}
+      >
+        <Ionicons name="trash-outline" size={20} color="#ff3b30" />
+      </TouchableOpacity>
     </ListItem>
   );
+
+  const startNewChat = () => {
+    setMessages([{
+      id: 'welcome',
+      text: "Hello, I'm Solomon. This is a safe space for you. I'm here to listen, support, and help with whatever is on your mind. Feel free to type or start a voice chat.",
+      sender: 'ai',
+      timestamp: new Date(),
+    }]);
+    setCurrentConversation(null);
+    activeConversationRef.current = null;
+  };
 
   const styles = StyleSheet.create({
     container: {
@@ -521,6 +650,14 @@ const CounselingScreen = () => {
       fontWeight: 'bold',
       color: '#ffffff',
     },
+    headerButtons: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    headerButton: {
+      padding: 8,
+      marginLeft: 8,
+    },
     browseButton: {
       padding: 8,
     },
@@ -588,12 +725,20 @@ const CounselingScreen = () => {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Chat</Text>
-        <TouchableOpacity
-          style={styles.browseButton}
-          onPress={() => setShowConversationsModal(true)}
-        >
-          <Ionicons name="albums-outline" size={24} color="#10a37f" />
-        </TouchableOpacity>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={startNewChat}
+          >
+            <Ionicons name="add-outline" size={24} color="#10a37f" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => setShowConversationsModal(true)}
+          >
+            <Ionicons name="albums-outline" size={24} color="#10a37f" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView 
