@@ -214,13 +214,19 @@ const CounselingScreen = () => {
     container: {
       flex: 1,
       backgroundColor: '#343541',
+      position: 'relative',
     },
     messagesContainer: {
       flex: 1,
+      marginBottom: 49,
     },
     messagesContent: {
       padding: 10,
-      paddingBottom: 20,
+      paddingBottom: 10,
+    },
+    loadingContainer: {
+      padding: 20,
+      alignItems: 'center',
     },
     messageContainer: {
       marginVertical: 5,
@@ -246,18 +252,23 @@ const CounselingScreen = () => {
     aiMessageText: {
       color: '#ffffff',
     },
-    loadingContainer: {
-      padding: 20,
-      alignItems: 'center',
+    inputWrapper: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      backgroundColor: '#202123',
+      borderTopWidth: 1,
+      borderTopColor: '#444654',
+      minHeight: 49,
     },
     inputContainer: {
       flexDirection: 'row',
       alignItems: 'center',
-      padding: 8,
+      paddingVertical: 6,
       paddingHorizontal: 12,
-      backgroundColor: '#202123',
-      borderTopWidth: 1,
-      borderTopColor: '#444654',
+      minHeight: 49,
+      backgroundColor: 'transparent',
     },
     input: {
       flex: 1,
@@ -268,36 +279,42 @@ const CounselingScreen = () => {
       paddingVertical: 0,
       marginVertical: 0,
       borderBottomWidth: 0,
-      height: 40,
     },
     inputField: {
       borderWidth: 1,
       borderColor: '#444654',
-      borderRadius: 20,
-      paddingHorizontal: 15,
+      borderRadius: 16,
+      paddingHorizontal: 12,
       backgroundColor: '#343541',
-      minHeight: 40,
-      maxHeight: 100,
+      minHeight: 36,
+      maxHeight: 120,
       marginTop: 0,
       marginBottom: 0,
+      paddingVertical: 4,
     },
     inputText: {
       color: '#ffffff',
-      fontSize: 16,
+      fontSize: 15,
+      textAlign: 'left',
+      textAlignVertical: 'center',
+      paddingTop: 0,
+      paddingBottom: 0,
+      lineHeight: 20,
+      height: '100%',
     },
     buttonsContainer: {
       flexDirection: 'row',
       alignItems: 'center',
       marginLeft: 8,
-      height: 40,
+      height: '100%',
     },
     iconButton: {
-      width: 40,
-      height: 40,
+      width: 36,
+      height: 36,
       justifyContent: 'center',
       alignItems: 'center',
-      marginLeft: 8,
-      borderRadius: 20,
+      marginLeft: 6,
+      borderRadius: 18,
       backgroundColor: '#343541',
       borderWidth: 1,
       borderColor: '#444654',
@@ -318,11 +335,7 @@ const CounselingScreen = () => {
   });
 
   return (
-    <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
+    <View style={styles.container}>
       <ScrollView 
         ref={scrollViewRef}
         style={styles.messagesContainer}
@@ -337,52 +350,64 @@ const CounselingScreen = () => {
         )}
       </ScrollView>
 
-      <View style={styles.inputContainer}>
-        <Input
-          placeholder="What's On Your Mind?"
-          value={inputText}
-          onChangeText={setInputText}
-          containerStyle={styles.input}
-          inputContainerStyle={styles.inputField}
-          inputStyle={styles.inputText}
-          multiline
-          disabled={isLoading || isRecording}
-          placeholderTextColor="#666980"
-        />
-        <View style={styles.buttonsContainer}>
-          <TouchableOpacity
-            style={[
-              styles.iconButton,
-              isRecording && styles.recordingButton,
-              isLoading && styles.disabledIconButton
+      <View style={[
+        styles.inputWrapper,
+        inputText.length > 0 && {
+          minHeight: Math.min(49 + (inputText.split('\n').length - 1) * 20, 120),
+        }
+      ]}>
+        <View style={styles.inputContainer}>
+          <Input
+            placeholder="What's on your mind?..."
+            value={inputText}
+            onChangeText={setInputText}
+            containerStyle={styles.input}
+            inputContainerStyle={[
+              styles.inputField,
+              inputText.length > 0 && { height: 'auto' }
             ]}
-            onPress={toggleRecording}
-            disabled={isLoading}
-          >
-            <Ionicons 
-              name={isRecording ? "stop-circle" : "mic"} 
-              size={22} 
-              color={isRecording ? "#ff3b30" : isLoading ? "#666980" : "#10a37f"} 
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.iconButton,
-              inputText.trim() && !isLoading && !isRecording && styles.activeIconButton,
-              (isLoading || !inputText.trim() || isRecording) && styles.disabledIconButton
-            ]}
-            onPress={handleSend}
-            disabled={isLoading || !inputText.trim() || isRecording}
-          >
-            <Ionicons 
-              name="send" 
-              size={20} 
-              color={(!inputText.trim() || isLoading || isRecording) ? "#666980" : "#ffffff"} 
-            />
-          </TouchableOpacity>
+            inputStyle={styles.inputText}
+            multiline={true}
+            disabled={isLoading || isRecording}
+            placeholderTextColor="#666980"
+            textAlignVertical="center"
+            style={{ lineHeight: 20 }}
+          />
+          <View style={styles.buttonsContainer}>
+            <TouchableOpacity
+              style={[
+                styles.iconButton,
+                isRecording && styles.recordingButton,
+                isLoading && styles.disabledIconButton
+              ]}
+              onPress={toggleRecording}
+              disabled={isLoading}
+            >
+              <Ionicons 
+                name={isRecording ? "stop-circle" : "mic"} 
+                size={22} 
+                color={isRecording ? "#ff3b30" : isLoading ? "#666980" : "#10a37f"} 
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.iconButton,
+                inputText.trim() && !isLoading && !isRecording && styles.activeIconButton,
+                (isLoading || !inputText.trim() || isRecording) && styles.disabledIconButton
+              ]}
+              onPress={handleSend}
+              disabled={isLoading || !inputText.trim() || isRecording}
+            >
+              <Ionicons 
+                name="send" 
+                size={20} 
+                color={(!inputText.trim() || isLoading || isRecording) ? "#666980" : "#ffffff"} 
+              />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 };
 
