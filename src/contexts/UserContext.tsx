@@ -13,6 +13,7 @@ interface UserContextType {
   register: (email: string, password: string, username: string) => Promise<void>;
   logout: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
+  updateProfile: (updates: Partial<Omit<User, 'id' | 'email' | 'createdAt'>>) => Promise<void>;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -101,6 +102,19 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updateProfile = async (updates: Partial<Omit<User, 'id' | 'email' | 'createdAt'>>) => {
+    if (!user) throw new Error('No user logged in');
+
+    try {
+      const updatedUser = await FirebaseService.updateUserProfile(user.id, updates);
+      setUser(updatedUser);
+      await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      throw error;
+    }
+  };
+
   return (
     <UserContext.Provider value={{ 
       user, 
@@ -108,7 +122,8 @@ export const UserProvider: React.FC<{ children: React.ReactNode }> = ({ children
       login, 
       register, 
       logout,
-      signInWithGoogle 
+      signInWithGoogle,
+      updateProfile
     }}>
       {children}
     </UserContext.Provider>

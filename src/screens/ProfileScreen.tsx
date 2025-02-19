@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, Platform, TouchableOpacity } from 'react-native';
-import { Text, Switch, Button } from '@rneui/themed';
+import { View, ScrollView, StyleSheet, Platform, TouchableOpacity, TextInput, Alert } from 'react-native';
+import { Text, Switch, Button, Overlay } from '@rneui/themed';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import NotificationService from '../services/NotificationService';
 import { useUser } from '../contexts/UserContext';
+import FirebaseService from '../services/FirebaseService';
 
 const ProfileScreen = () => {
   const [devotionalEnabled, setDevotionalEnabled] = useState(false);
@@ -14,13 +15,23 @@ const ProfileScreen = () => {
   const [showDevotionalTimePicker, setShowDevotionalTimePicker] = useState(false);
   const [showWisdomTimePicker, setShowWisdomTimePicker] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedUsername, setEditedUsername] = useState('');
+  const [editedDisplayName, setEditedDisplayName] = useState('');
+  const [editedBio, setEditedBio] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const notificationService = NotificationService.getInstance();
-  const { user, logout } = useUser();
+  const { user, logout, updateProfile } = useUser();
 
   useEffect(() => {
     loadSettings();
-  }, []);
+    if (user) {
+      setEditedUsername(user.username);
+      setEditedDisplayName(user.displayName || '');
+      setEditedBio(user.bio || '');
+    }
+  }, [user]);
 
   const loadSettings = async () => {
     try {
@@ -122,6 +133,32 @@ const ProfileScreen = () => {
     }
   };
 
+  const handleSaveProfile = async () => {
+    if (!user) return;
+
+    if (!editedUsername.trim()) {
+      Alert.alert('Error', 'Username cannot be empty');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      await updateProfile({
+        username: editedUsername.trim(),
+        displayName: editedDisplayName.trim() || undefined,
+        bio: editedBio.trim() || undefined,
+      });
+
+      setIsEditing(false);
+      Alert.alert('Success', 'Profile updated successfully');
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      Alert.alert('Error', 'Failed to update profile. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -217,7 +254,81 @@ const ProfileScreen = () => {
         <View style={styles.avatarContainer}>
           <Ionicons name="person-circle" size={80} color="#10a37f" />
         </View>
-        <Text style={styles.welcomeText}>Welcome to Solomon AI</Text>
+        {!isEditing ? (
+          <>
+            <Text style={styles.displayName}>{user?.displayName || user?.username}</Text>
+            {user?.bio && <Text style={styles.bio}>{user.bio}</Text>}
+            <Button
+              title="Edit Profile"
+              onPress={() => setIsEditing(true)}
+              buttonStyle={styles.editButton}
+              icon={
+                <Ionicons
+                  name="pencil"
+                  size={20}
+                  color="#ffffff"
+                  style={{ marginRight: 10 }}
+                />
+              }
+            />
+          </>
+        ) : (
+          <View style={styles.editForm}>
+            <TextInput
+              style={styles.input}
+              placeholder="Username"
+              placeholderTextColor="#666980"
+              value={editedUsername}
+              onChangeText={setEditedUsername}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Display Name (optional)"
+              placeholderTextColor="#666980"
+              value={editedDisplayName}
+              onChangeText={setEditedDisplayName}
+            />
+            <TextInput
+              style={[styles.input, styles.bioInput]}
+              placeholder="Bio (optional)"
+              placeholderTextColor="#666980"
+              value={editedBio}
+              onChangeText={setEditedBio}
+              multiline
+              numberOfLines={3}
+            />
+            <View style={styles.editButtons}>
+              <Button
+                title="Cancel"
+                type="outline"
+                onPress={() => setIsEditing(false)}
+                containerStyle={styles.editButtonContainer}
+              />
+              <Button
+                title="Save"
+                onPress={handleSaveProfile}
+                loading={isSaving}
+                containerStyle={styles.editButtonContainer}
+              />
+            </View>
+          </View>
+        )}
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Account Information</Text>
+        <View style={styles.settingCard}>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Email</Text>
+            <Text style={styles.infoValue}>{user?.email}</Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Member Since</Text>
+            <Text style={styles.infoValue}>
+              {user?.createdAt.toLocaleDateString()}
+            </Text>
+          </View>
+        </View>
       </View>
 
       <View style={styles.section}>
@@ -467,6 +578,51 @@ const styles = StyleSheet.create({
   logoutButtonText: {
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  displayName: {
+    fontSize: 24,
+    color: '#ffffff',
+    fontWeight: 'bold',
+    marginTop: 10,
+  },
+  bio: {
+    fontSize: 16,
+    color: '#666980',
+    textAlign: 'center',
+    marginTop: 8,
+    paddingHorizontal: 20,
+  },
+  editButton: {
+    backgroundColor: '#10a37f',
+    paddingHorizontal: 20,
+    marginTop: 15,
+    borderRadius: 8,
+  },
+  editForm: {
+    width: '100%',
+    paddingHorizontal: 20,
+    marginTop: 15,
+  },
+  input: {
+    backgroundColor: '#444654',
+    borderRadius: 8,
+    padding: 15,
+    marginBottom: 10,
+    color: '#ffffff',
+    fontSize: 16,
+  },
+  bioInput: {
+    height: 100,
+    textAlignVertical: 'top',
+  },
+  editButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  editButtonContainer: {
+    flex: 1,
+    marginHorizontal: 5,
   },
 });
 

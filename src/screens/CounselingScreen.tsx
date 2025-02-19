@@ -1,9 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Dimensions, TouchableOpacity } from 'react-native';
-import { Text, Input, Button } from '@rneui/themed';
+import { View, ScrollView, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Dimensions, TouchableOpacity, Alert, Modal } from 'react-native';
+import { Text, Input, Button, ListItem } from '@rneui/themed';
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import AIService from '../services/AIService';
+import FirebaseService, { Conversation, Message as DBMessage } from '../services/FirebaseService';
+import { useUser } from '../contexts/UserContext';
+import { formatDistance } from 'date-fns';
+import { auth } from '../config/firebase';
+import { useNavigation, useIsFocused, useFocusEffect } from '@react-navigation/native';
 
 interface Message {
   id: string;
@@ -12,14 +17,37 @@ interface Message {
   timestamp: Date;
 }
 
+// Add this type to help with conversion
+type FirestoreMessage = {
+  id: string;
+  content: string;
+  role: 'user' | 'assistant';
+  timestamp: Date;
+  userId: string;
+  conversationId: string;
+}
+
 const CounselingScreen = () => {
+  const navigation = useNavigation();
+  const { user } = useUser();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+  const messagesRef = useRef<Message[]>([]);
   const aiService = AIService.getInstance();
+  const [showConversationsModal, setShowConversationsModal] = useState(false);
+  const [previousConversations, setPreviousConversations] = useState<Conversation[]>([]);
+  const [isLoadingConversations, setIsLoadingConversations] = useState(false);
+  const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
 
+  // Update messagesRef whenever messages change
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  // Audio setup and recording state management
   useEffect(() => {
     setupAudio();
     const unsubscribe = aiService.onRecordingStateChange(async (isRecording) => {
@@ -74,8 +102,8 @@ const CounselingScreen = () => {
     };
   }, []);
 
+  // Initial welcome message
   useEffect(() => {
-    // Show initial welcome message when component mounts
     const welcomeMessage: Message = {
       id: 'welcome',
       text: "Hello, I'm Solomon. This is a safe space for you. I'm here to listen, support, and help with whatever is on your mind. Feel free to type or start a voice chat.",
@@ -85,14 +113,21 @@ const CounselingScreen = () => {
     setMessages([welcomeMessage]);
   }, []);
 
+  // Auto-scroll to bottom
   useEffect(() => {
-    // Scroll to bottom whenever messages change
     if (scrollViewRef.current) {
       setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
       }, 100);
     }
   }, [messages]);
+
+  // Add this useEffect to load conversations when modal opens
+  useEffect(() => {
+    if (showConversationsModal && user) {
+      loadPreviousConversations();
+    }
+  }, [showConversationsModal, user]);
 
   const setupAudio = async () => {
     try {
@@ -106,46 +141,40 @@ const CounselingScreen = () => {
     }
   };
 
-  const toggleRecording = async () => {
-    if (isRecording) {
-      await aiService.cancelRecording();
-    } else {
-      try {
-        setIsLoading(true);
-        const result = await aiService.startVoiceRecording();
-        
-        if (result) {
-          const { transcription, aiResponse } = result;
-          console.log('Got voice conversation result:', { transcription, aiResponse });
-          
-          // Add user's transcribed message
-          setMessages(prev => [
-            ...prev,
-            {
-              id: Date.now().toString(),
-              text: transcription.trim(),
-              sender: 'user',
-              timestamp: new Date(),
-            },
-            {
-              id: (Date.now() + 1).toString(),
-              text: aiResponse,
-              sender: 'ai',
-              timestamp: new Date(),
-            }
-          ]);
-        }
-      } catch (error) {
-        console.error('Failed to start recording:', error);
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          text: "I apologize, but I'm experiencing some difficulty processing your message. Please try again.",
-          sender: 'ai',
-          timestamp: new Date(),
-        }]);
-      } finally {
-        setIsLoading(false);
+  const createNewConversation = async () => {
+    if (!auth.currentUser?.uid) return null;
+    try {
+      const title = `Counseling Session - ${new Date().toLocaleString()}`;
+      const conversation = await FirebaseService.createConversation(
+        auth.currentUser.uid,
+        title
+      );
+      setCurrentConversation(conversation);
+      return conversation;
+    } catch (error) {
+      console.error('Failed to create conversation:', error);
+      return null;
+    }
+  };
+
+  const saveMessage = async (message: Message, role: 'user' | 'assistant') => {
+    if (!auth.currentUser?.uid) return;
+
+    try {
+      let conversation = currentConversation;
+      if (!conversation) {
+        conversation = await createNewConversation();
+        if (!conversation) return;
       }
+
+      await FirebaseService.addMessage(
+        conversation.id,
+        message.text,
+        role,
+        auth.currentUser.uid
+      );
+    } catch (error) {
+      console.error('Failed to save message:', error);
     }
   };
 
@@ -161,6 +190,9 @@ const CounselingScreen = () => {
     setInputText('');
     setIsLoading(true);
 
+    // Save user message
+    await saveMessage(userMessage, 'user');
+
     try {
       const aiResponse = await aiService.getCounselingResponse(userMessage.text, useVoice);
       
@@ -172,6 +204,9 @@ const CounselingScreen = () => {
       };
 
       setMessages(prev => [...prev, aiMessage]);
+      
+      // Save AI message
+      await saveMessage(aiMessage, 'assistant');
     } catch (error) {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -180,9 +215,61 @@ const CounselingScreen = () => {
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, errorMessage]);
+      
+      // Save error message
+      await saveMessage(errorMessage, 'assistant');
     } finally {
       setIsLoading(false);
       setIsRecording(false);
+    }
+  };
+
+  const toggleRecording = async () => {
+    if (isRecording) {
+      await aiService.cancelRecording();
+    } else {
+      try {
+        setIsLoading(true);
+        const result = await aiService.startVoiceRecording();
+        
+        if (result) {
+          const { transcription, aiResponse } = result;
+          
+          const userMessage: Message = {
+            id: Date.now().toString(),
+            text: transcription.trim(),
+            sender: 'user',
+            timestamp: new Date(),
+          };
+
+          const aiMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            text: aiResponse,
+            sender: 'ai',
+            timestamp: new Date(),
+          };
+
+          setMessages(prev => [...prev, userMessage, aiMessage]);
+
+          // Save both messages
+          await saveMessage(userMessage, 'user');
+          await saveMessage(aiMessage, 'assistant');
+        }
+      } catch (error) {
+        console.error('Failed to start recording:', error);
+        const errorMessage: Message = {
+          id: Date.now().toString(),
+          text: "I apologize, but I'm experiencing some difficulty processing your message. Please try again.",
+          sender: 'ai',
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, errorMessage]);
+        
+        // Save error message
+        await saveMessage(errorMessage, 'assistant');
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -208,6 +295,93 @@ const CounselingScreen = () => {
         </Text>
       </View>
     </View>
+  );
+
+  const loadPreviousConversations = async () => {
+    if (!user) return;
+    
+    try {
+      setIsLoadingConversations(true);
+      const conversations = await FirebaseService.getConversations(user.id);
+      setPreviousConversations(conversations);
+    } catch (error) {
+      console.error('Error loading conversations:', error);
+      const isIndexError = error instanceof Error && 
+        error.message.includes('The query requires an index');
+      
+      if (isIndexError) {
+        Alert.alert(
+          'One-time Setup Required',
+          'The database needs a one-time setup. Please wait a few minutes for the database to be optimized, then try again.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert('Error', 'Failed to load previous conversations. Please try again later.');
+      }
+    } finally {
+      setIsLoadingConversations(false);
+    }
+  };
+
+  const loadConversation = async (conversationId: string) => {
+    try {
+      setIsLoading(true);
+      const dbMessages = await FirebaseService.getMessages(conversationId);
+      
+      if (dbMessages.length === 0) {
+        Alert.alert('Info', 'This conversation is empty');
+        return;
+      }
+
+      // Convert Firestore messages to our Message format
+      const formattedMessages: Message[] = dbMessages.map(msg => ({
+        id: msg.id,
+        text: msg.content,
+        sender: msg.role === 'user' ? 'user' : 'ai',
+        timestamp: new Date(msg.timestamp.toDate()),
+      }));
+
+      setMessages(formattedMessages);
+      setShowConversationsModal(false);
+    } catch (error) {
+      console.error('Error loading conversation:', error);
+      const isIndexError = error instanceof Error && 
+        error.message.includes('The query requires an index');
+      
+      if (isIndexError) {
+        Alert.alert(
+          'One-time Setup Required',
+          'The database needs a one-time setup for messages. Please wait a few minutes for the database to be optimized, then try again.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert(
+          'Error',
+          'Failed to load conversation messages. Please try again later.',
+          [{ text: 'OK' }]
+        );
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const renderConversationItem = (conversation: Conversation) => (
+    <ListItem
+      key={conversation.id}
+      onPress={() => loadConversation(conversation.id)}
+      containerStyle={styles.conversationItem}
+    >
+      <ListItem.Content>
+        <ListItem.Title style={styles.conversationTitle}>
+          {conversation.title}
+        </ListItem.Title>
+        <ListItem.Subtitle style={styles.conversationSubtitle}>
+          {`${conversation.messageCount} messages • ${formatDistance(conversation.lastUpdated.toDate(), new Date(), { addSuffix: true })}`}
+        </ListItem.Subtitle>
+      </ListItem.Content>
+      <ListItem.Chevron color="#666980" />
+    </ListItem>
   );
 
   const styles = StyleSheet.create({
@@ -332,10 +506,96 @@ const CounselingScreen = () => {
       borderColor: '#444654',
       opacity: 0.5,
     },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      backgroundColor: '#202123',
+      borderBottomWidth: 1,
+      borderBottomColor: '#444654',
+    },
+    headerTitle: {
+      fontSize: 18,
+      fontWeight: 'bold',
+      color: '#ffffff',
+    },
+    browseButton: {
+      padding: 8,
+    },
+    modalContainer: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'flex-end',
+    },
+    modalContent: {
+      backgroundColor: '#343541',
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      maxHeight: '80%',
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: '#444654',
+    },
+    modalTitle: {
+      fontSize: 18,
+      fontWeight: 'bold',
+      color: '#ffffff',
+    },
+    closeButton: {
+      padding: 4,
+    },
+    conversationsList: {
+      padding: 16,
+    },
+    conversationItem: {
+      backgroundColor: '#444654',
+      marginBottom: 8,
+      borderRadius: 8,
+    },
+    conversationTitle: {
+      color: '#ffffff',
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    conversationSubtitle: {
+      color: '#666980',
+      fontSize: 14,
+      marginTop: 4,
+    },
+    modalLoading: {
+      padding: 32,
+      alignItems: 'center',
+    },
+    noConversations: {
+      padding: 32,
+      alignItems: 'center',
+    },
+    noConversationsText: {
+      color: '#666980',
+      fontSize: 16,
+      textAlign: 'center',
+    },
   });
 
   return (
     <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Chat</Text>
+        <TouchableOpacity
+          style={styles.browseButton}
+          onPress={() => setShowConversationsModal(true)}
+        >
+          <Ionicons name="albums-outline" size={24} color="#10a37f" />
+        </TouchableOpacity>
+      </View>
+
       <ScrollView 
         ref={scrollViewRef}
         style={styles.messagesContainer}
@@ -349,6 +609,44 @@ const CounselingScreen = () => {
           </View>
         )}
       </ScrollView>
+
+      {/* Conversations Modal */}
+      <Modal
+        visible={showConversationsModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowConversationsModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Previous Conversations</Text>
+              <TouchableOpacity
+                onPress={() => setShowConversationsModal(false)}
+                style={styles.closeButton}
+              >
+                <Ionicons name="close" size={24} color="#666980" />
+              </TouchableOpacity>
+            </View>
+            
+            {isLoadingConversations ? (
+              <View style={styles.modalLoading}>
+                <ActivityIndicator size="large" color="#10a37f" />
+              </View>
+            ) : previousConversations.length > 0 ? (
+              <ScrollView style={styles.conversationsList}>
+                {previousConversations.map(renderConversationItem)}
+              </ScrollView>
+            ) : (
+              <View style={styles.noConversations}>
+                <Text style={styles.noConversationsText}>
+                  No previous conversations found
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       <View style={[
         styles.inputWrapper,

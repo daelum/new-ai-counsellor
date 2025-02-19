@@ -1,6 +1,4 @@
-import { initializeApp } from 'firebase/app';
 import {
-  getAuth,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
@@ -9,7 +7,6 @@ import {
   signInWithCredential,
 } from 'firebase/auth';
 import {
-  getFirestore,
   collection,
   addDoc,
   getDocs,
@@ -21,30 +18,10 @@ import {
   where,
   Timestamp,
   deleteDoc,
+  increment,
+  writeBatch,
 } from 'firebase/firestore';
-import {
-  FIREBASE_API_KEY,
-  FIREBASE_AUTH_DOMAIN,
-  FIREBASE_PROJECT_ID,
-  FIREBASE_STORAGE_BUCKET,
-  FIREBASE_MESSAGING_SENDER_ID,
-  FIREBASE_APP_ID,
-  FIREBASE_MEASUREMENT_ID,
-} from '@env';
-
-const firebaseConfig = {
-  apiKey: FIREBASE_API_KEY,
-  authDomain: FIREBASE_AUTH_DOMAIN,
-  projectId: FIREBASE_PROJECT_ID,
-  storageBucket: FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: FIREBASE_MESSAGING_SENDER_ID,
-  appId: FIREBASE_APP_ID,
-  measurementId: FIREBASE_MEASUREMENT_ID,
-};
-
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+import { auth, db } from '../config/firebase';
 
 export interface User {
   id: string;
@@ -52,6 +29,8 @@ export interface User {
   username: string;
   createdAt: Date;
   lastLogin: Date;
+  bio?: string;
+  displayName?: string;
 }
 
 export interface Prayer {
@@ -65,6 +44,26 @@ export interface Prayer {
   expiresAt: {
     toDate: () => Date;
   };
+}
+
+export interface Conversation {
+  id: string;
+  userId: string;
+  title: string;
+  createdAt: Timestamp;
+  lastUpdated: Timestamp;
+  messageCount: number;
+}
+
+export type MessageRole = 'user' | 'assistant';
+
+export interface Message {
+  id: string;
+  conversationId: string;
+  content: string;
+  timestamp: Timestamp;
+  role: MessageRole;
+  userId: string;
 }
 
 class FirebaseService {
@@ -318,6 +317,237 @@ class FirebaseService {
       createdAt: userData.createdAt.toDate(),
       lastLogin: new Date(),
     };
+  }
+
+  async updateUserProfile(userId: string, updates: Partial<Omit<User, 'id' | 'email' | 'createdAt'>>): Promise<User> {
+    try {
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef);
+      const querySnapshot = await getDocs(q);
+      const userDoc = querySnapshot.docs.find(
+        doc => doc.data().firebaseId === userId
+      );
+
+      if (!userDoc) {
+        throw new Error('User not found');
+      }
+
+      const currentData = userDoc.data();
+      const updatedData = {
+        ...updates,
+        lastLogin: new Date(),
+      };
+
+      await updateDoc(doc(db, 'users', userDoc.id), updatedData);
+
+      // Return complete user object with all fields
+      return {
+        id: userId,
+        email: currentData.email,
+        username: updates.username || currentData.username,
+        displayName: updates.displayName || currentData.displayName,
+        bio: updates.bio || currentData.bio,
+        createdAt: currentData.createdAt.toDate(),
+        lastLogin: new Date(),
+      };
+    } catch (error) {
+      console.error('Error updating user profile:', error);
+      throw error;
+    }
+  }
+
+  async createConversation(userId: string, title: string): Promise<Conversation> {
+    try {
+      // Add detailed auth logging
+      console.log('Creating conversation with auth state:', {
+        currentUser: auth.currentUser ? {
+          uid: auth.currentUser.uid,
+          email: auth.currentUser.email,
+          isAnonymous: auth.currentUser.isAnonymous,
+        } : null,
+        providedUserId: userId,
+        isAuthenticated: !!auth.currentUser
+      });
+
+      if (!auth.currentUser?.uid) {
+        throw new Error('User must be authenticated to create a conversation');
+      }
+
+      // Verify the passed userId matches the authenticated user
+      if (userId !== auth.currentUser.uid) {
+        console.warn('Passed userId does not match authenticated user', {
+          passedUserId: userId,
+          authenticatedUserId: auth.currentUser.uid
+        });
+      }
+
+      const now = Timestamp.now();
+      const conversationData = {
+        userId: auth.currentUser.uid, // Always use the authenticated user's ID
+        title,
+        createdAt: now,
+        lastUpdated: now,
+        messageCount: 0,
+      };
+
+      console.log('Attempting to create conversation with data:', conversationData);
+
+      const docRef = await addDoc(collection(db, 'conversations'), conversationData);
+      console.log('Successfully created conversation with ID:', docRef.id);
+      
+      return {
+        id: docRef.id,
+        ...conversationData,
+      };
+    } catch (error) {
+      console.error('Error creating conversation:', error);
+      if (error instanceof Error) {
+        console.error('Error details:', {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        });
+      }
+      throw error;
+    }
+  }
+
+  async addMessage(
+    conversationId: string,
+    content: string,
+    role: MessageRole,
+    userId: string
+  ): Promise<Message> {
+    try {
+      if (!auth.currentUser?.uid) {
+        throw new Error('User must be authenticated to add a message');
+      }
+
+      const messageData = {
+        conversationId,
+        content,
+        timestamp: Timestamp.now(),
+        role,
+        userId: auth.currentUser.uid,
+      };
+
+      const docRef = await addDoc(collection(db, 'messages'), messageData);
+      
+      // Update conversation's lastUpdated and messageCount
+      const conversationRef = doc(db, 'conversations', conversationId);
+      await updateDoc(conversationRef, {
+        lastUpdated: messageData.timestamp,
+        messageCount: increment(1),
+      });
+
+      return {
+        id: docRef.id,
+        ...messageData,
+      };
+    } catch (error) {
+      console.error('Error adding message:', error);
+      throw error;
+    }
+  }
+
+  async getConversations(userId: string): Promise<Conversation[]> {
+    try {
+      if (!auth.currentUser?.uid) {
+        throw new Error('User must be authenticated to get conversations');
+      }
+
+      const q = query(
+        collection(db, 'conversations'),
+        where('userId', '==', auth.currentUser.uid),
+        orderBy('lastUpdated', 'desc')
+      );
+
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      } as Conversation));
+    } catch (error) {
+      console.error('Error getting conversations:', error);
+      throw error;
+    }
+  }
+
+  async getMessages(conversationId: string): Promise<Message[]> {
+    try {
+      if (!auth.currentUser?.uid) {
+        throw new Error('User must be authenticated to get messages');
+      }
+
+      // First verify the conversation belongs to the current user
+      const conversationRef = doc(db, 'conversations', conversationId);
+      const conversationDoc = await getDoc(conversationRef);
+      
+      if (!conversationDoc.exists()) {
+        throw new Error('Conversation not found');
+      }
+
+      const conversationData = conversationDoc.data();
+      if (conversationData.userId !== auth.currentUser.uid) {
+        throw new Error('Unauthorized: You can only access your own conversations');
+      }
+
+      const q = query(
+        collection(db, 'messages'),
+        where('conversationId', '==', conversationId),
+        orderBy('timestamp', 'asc')
+      );
+
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      } as Message));
+    } catch (error) {
+      console.error('Error getting messages:', error);
+      throw error;
+    }
+  }
+
+  async deleteConversation(conversationId: string, userId: string): Promise<void> {
+    try {
+      if (!auth.currentUser?.uid) {
+        throw new Error('User must be authenticated to delete a conversation');
+      }
+
+      // First, verify the user owns this conversation
+      const conversationRef = doc(db, 'conversations', conversationId);
+      const conversationDoc = await getDoc(conversationRef);
+      
+      if (!conversationDoc.exists()) {
+        throw new Error('Conversation not found');
+      }
+
+      const conversation = conversationDoc.data();
+      if (conversation.userId !== auth.currentUser.uid) {
+        throw new Error('Unauthorized: You can only delete your own conversations');
+      }
+
+      // Delete all messages in the conversation
+      const messagesQuery = query(
+        collection(db, 'messages'),
+        where('conversationId', '==', conversationId)
+      );
+      const messagesSnapshot = await getDocs(messagesQuery);
+      
+      const batch = writeBatch(db);
+      messagesSnapshot.docs.forEach(doc => {
+        batch.delete(doc.ref);
+      });
+      
+      // Delete the conversation document
+      batch.delete(conversationRef);
+      
+      await batch.commit();
+    } catch (error) {
+      console.error('Error deleting conversation:', error);
+      throw error;
+    }
   }
 }
 
