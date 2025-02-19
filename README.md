@@ -122,4 +122,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 Your Name - [@daelum](https://github.com/daelum)
 
-Project Link: [https://github.com/daelum/new-ai-counsellor](https://github.com/daelum/new-ai-counsellor)
+Project Link: [https://github.com/daelum/new-ai-counsellor](https://github.com/daelum/new-ai-counsellor) 
