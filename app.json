@@ -18,7 +18,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.solomon.ai",
       "infoPlist": {
-        "UIBackgroundModes": ["remote-notification"],
+        "UIBackgroundModes": [
+          "remote-notification"
+        ],
         "NSUserNotificationUsageDescription": "We use notifications to send you daily Bible verses and important updates."
       }
     },
@@ -28,7 +30,11 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.solomon.ai",
-      "permissions": ["NOTIFICATIONS", "SCHEDULE_EXACT_ALARM", "USE_EXACT_ALARM"]
+      "permissions": [
+        "NOTIFICATIONS",
+        "SCHEDULE_EXACT_ALARM",
+        "USE_EXACT_ALARM"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -39,9 +45,16 @@
         {
           "icon": "./assets/notification-icon.png",
           "color": "#10a37f",
-          "sounds": ["./assets/notification-sound.wav"]
+          "sounds": [
+            "./assets/notification-sound.wav"
+          ]
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "3890fedc-c197-473d-b83f-07ccf72677cb"
+      }
+    }
   }
 }

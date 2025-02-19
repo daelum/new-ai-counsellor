@@ -1,11 +1,14 @@
 import OpenAI from 'openai';
 import { OPENAI_API_KEY } from '@env';
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
+import * as FileSystem from 'expo-file-system';
+import { Audio } from 'expo-av';
 
 class AIService {
   private openai: OpenAI;
   private static instance: AIService;
   private conversationHistory: ChatCompletionMessageParam[];
+  private sound: Audio.Sound | null = null;
 
   private constructor() {
     if (!OPENAI_API_KEY) {
@@ -42,9 +45,88 @@ Additional guidelines for your responses:
     return AIService.instance;
   }
 
-  public async getCounselingResponse(userMessage: string): Promise<string> {
+  public async startVoiceRecording(): Promise<Audio.Recording> {
     try {
-      // Add user message to conversation history
+      console.log('Requesting audio recording permissions...');
+      const permission = await Audio.requestPermissionsAsync();
+      
+      if (permission.status !== 'granted') {
+        throw new Error('Audio recording permission not granted');
+      }
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      console.log('Starting recording...');
+      const recording = new Audio.Recording();
+      await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      await recording.startAsync();
+      
+      return recording;
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+      throw error;
+    }
+  }
+
+  public async stopVoiceRecording(recording: Audio.Recording): Promise<string> {
+    try {
+      await recording.stopAndUnloadAsync();
+      const uri = recording.getURI();
+      if (!uri) throw new Error('No recording URI available');
+
+      // Convert the audio to base64
+      const base64Audio = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      // Send to OpenAI for transcription
+      const transcript = await this.openai.audio.transcriptions.create({
+        file: new File([Buffer.from(base64Audio, 'base64')], 'audio.m4a', {
+          type: 'audio/m4a',
+        }),
+        model: 'whisper-1',
+      });
+
+      return transcript.text;
+    } catch (error) {
+      console.error('Failed to stop recording:', error);
+      throw error;
+    }
+  }
+
+  public async generateVoiceResponse(text: string): Promise<void> {
+    try {
+      if (this.sound) {
+        await this.sound.unloadAsync();
+      }
+
+      const mp3Response = await this.openai.audio.speech.create({
+        model: 'tts-1',
+        voice: 'onyx', // Using a deep, wise-sounding voice for Solomon
+        input: text,
+      });
+
+      const base64Audio = Buffer.from(await mp3Response.arrayBuffer()).toString('base64');
+      const audioUri = `${FileSystem.documentDirectory}response.mp3`;
+      
+      await FileSystem.writeAsStringAsync(audioUri, base64Audio, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      this.sound = new Audio.Sound();
+      await this.sound.loadAsync({ uri: audioUri });
+      await this.sound.playAsync();
+    } catch (error) {
+      console.error('Failed to generate or play voice response:', error);
+      throw error;
+    }
+  }
+
+  public async getCounselingResponse(userMessage: string, useVoice: boolean = false): Promise<string> {
+    try {
       this.conversationHistory.push({
         role: "user",
         content: userMessage
@@ -60,18 +142,20 @@ Additional guidelines for your responses:
       const aiResponse = response.choices[0]?.message?.content || 
         "I apologize, but I'm unable to provide a response at this moment. Please try again.";
 
-      // Add AI response to conversation history
       this.conversationHistory.push({
         role: "assistant",
         content: aiResponse
       });
 
-      // Keep conversation history manageable (last 10 messages)
-      if (this.conversationHistory.length > 11) { // 1 system prompt + 10 messages
+      if (this.conversationHistory.length > 11) {
         this.conversationHistory = [
           this.conversationHistory[0],
           ...this.conversationHistory.slice(-10)
         ];
+      }
+
+      if (useVoice) {
+        await this.generateVoiceResponse(aiResponse);
       }
 
       return aiResponse;
@@ -183,6 +267,17 @@ Additional guidelines for your responses:
   // Method to clear conversation history if needed
   public clearConversationHistory(): void {
     this.conversationHistory = [this.conversationHistory[0]]; // Keep only the system prompt
+  }
+
+  public async stopAndUnloadSound(): Promise<void> {
+    if (this.sound) {
+      try {
+        await this.sound.stopAsync();
+        await this.sound.unloadAsync();
+      } catch (error) {
+        console.error('Error stopping sound:', error);
+      }
+    }
   }
 }
 

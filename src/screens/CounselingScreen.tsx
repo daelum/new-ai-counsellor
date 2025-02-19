@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Dimensions } from 'react-native';
+import { View, ScrollView, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Dimensions, TouchableOpacity } from 'react-native';
 import { Text, Input, Button } from '@rneui/themed';
-import AIService from '../services/AIService';
 import { Ionicons } from '@expo/vector-icons';
+import { Audio } from 'expo-av';
+import AIService from '../services/AIService';
 
 interface Message {
   id: string;
@@ -15,8 +16,20 @@ const CounselingScreen = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const aiService = AIService.getInstance();
+
+  useEffect(() => {
+    setupAudio();
+    return () => {
+      if (recording) {
+        recording.stopAndUnloadAsync();
+      }
+      aiService.stopAndUnloadSound();
+    };
+  }, []);
 
   useEffect(() => {
     // Show initial welcome message when component mounts
@@ -34,12 +47,52 @@ const CounselingScreen = () => {
     scrollViewRef.current?.scrollToEnd({ animated: true });
   }, [messages]);
 
-  const handleSend = async () => {
-    if (!inputText.trim()) return;
+  const setupAudio = async () => {
+    try {
+      await Audio.requestPermissionsAsync();
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+    } catch (error) {
+      console.error('Error setting up audio:', error);
+    }
+  };
 
+  const startRecording = async () => {
+    try {
+      const newRecording = await aiService.startVoiceRecording();
+      setRecording(newRecording);
+      setIsRecording(true);
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+    }
+  };
+
+  const stopRecording = async () => {
+    if (!recording) return;
+
+    try {
+      setIsRecording(false);
+      setIsLoading(true);
+      
+      const transcription = await aiService.stopVoiceRecording(recording);
+      setRecording(null);
+
+      if (transcription) {
+        await handleMessage(transcription, true);
+      }
+    } catch (error) {
+      console.error('Failed to stop recording:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleMessage = async (text: string, useVoice: boolean = false) => {
     const userMessage: Message = {
       id: Date.now().toString(),
-      text: inputText.trim(),
+      text: text.trim(),
       sender: 'user',
       timestamp: new Date(),
     };
@@ -49,7 +102,7 @@ const CounselingScreen = () => {
     setIsLoading(true);
 
     try {
-      const aiResponse = await aiService.getCounselingResponse(userMessage.text);
+      const aiResponse = await aiService.getCounselingResponse(userMessage.text, useVoice);
       
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -70,6 +123,11 @@ const CounselingScreen = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSend = () => {
+    if (!inputText.trim()) return;
+    handleMessage(inputText);
   };
 
   const renderMessage = (message: Message) => (
@@ -120,22 +178,31 @@ const CounselingScreen = () => {
           inputContainerStyle={styles.inputField}
           inputStyle={styles.inputText}
           multiline
-          disabled={isLoading}
+          disabled={isLoading || isRecording}
           placeholderTextColor="#666980"
         />
-        <Button
-          icon={
-            <Ionicons 
-              name="send" 
-              size={24} 
-              color={inputText.trim() ? "#10a37f" : "#666980"} 
-            />
-          }
-          type="clear"
+        <TouchableOpacity
+          style={[styles.iconButton, isRecording && styles.recordingButton]}
+          onPress={isRecording ? stopRecording : startRecording}
+          disabled={isLoading}
+        >
+          <Ionicons 
+            name={isRecording ? "stop-circle" : "mic"} 
+            size={24} 
+            color={isLoading ? "#666980" : "#10a37f"} 
+          />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.iconButton}
           onPress={handleSend}
-          disabled={isLoading || !inputText.trim()}
-          containerStyle={styles.sendButton}
-        />
+          disabled={isLoading || !inputText.trim() || isRecording}
+        >
+          <Ionicons 
+            name="send" 
+            size={24} 
+            color={(!inputText.trim() || isLoading || isRecording) ? "#666980" : "#10a37f"} 
+          />
+        </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   );
@@ -205,11 +272,16 @@ const styles = StyleSheet.create({
   inputText: {
     color: '#ffffff',
   },
-  sendButton: {
+  iconButton: {
     width: 44,
     height: 44,
     justifyContent: 'center',
     alignItems: 'center',
+    marginLeft: 8,
+  },
+  recordingButton: {
+    backgroundColor: 'rgba(255, 59, 48, 0.1)',
+    borderRadius: 22,
   },
 });
 
