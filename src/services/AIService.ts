@@ -4,11 +4,38 @@ import { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import * as FileSystem from 'expo-file-system';
 import { Audio } from 'expo-av';
 
+type EventCallback = (isRecording: boolean) => void;
+
+class SimpleEventEmitter {
+  private listeners: EventCallback[] = [];
+
+  public on(callback: EventCallback): void {
+    this.listeners.push(callback);
+  }
+
+  public off(callback: EventCallback): void {
+    this.listeners = this.listeners.filter(cb => cb !== callback);
+  }
+
+  public emit(isRecording: boolean): void {
+    this.listeners.forEach(callback => callback(isRecording));
+  }
+}
+
+interface RecordingStatus {
+  isRecording: boolean;
+  lastVolume: number;
+  silenceStart: number;
+}
+
 class AIService {
   private openai: OpenAI;
   private static instance: AIService;
   private conversationHistory: ChatCompletionMessageParam[];
   private sound: Audio.Sound | null = null;
+  private recording: Audio.Recording | null = null;
+  private recordingStatus: RecordingStatus = { isRecording: false, lastVolume: 0, silenceStart: 0 };
+  private eventEmitter: SimpleEventEmitter = new SimpleEventEmitter();
 
   private constructor() {
     if (!OPENAI_API_KEY) {
@@ -28,7 +55,7 @@ class AIService {
 Additional guidelines for your responses:
 1. Always maintain a compassionate and understanding tone
 2. Include at least one relevant NIV Bible verse in each response
-3. Format Bible verses clearly as: "[Book Chapter:Verse] (NIV): [verse text]"
+3. Format Bible verses clearly as: "Book Chapter:Verse [NIV]: verse text"
 4. Provide practical guidance alongside spiritual insights
 5. When appropriate, encourage prayer and reflection
 6. Keep responses concise but meaningful
@@ -45,7 +72,63 @@ Additional guidelines for your responses:
     return AIService.instance;
   }
 
-  public async startVoiceRecording(): Promise<Audio.Recording> {
+  public onRecordingStateChange(callback: EventCallback): () => void {
+    this.eventEmitter.on(callback);
+    return () => this.eventEmitter.off(callback);
+  }
+
+  private emitRecordingState(isRecording: boolean) {
+    this.eventEmitter.emit(isRecording);
+  }
+
+  private async monitorAudioLevel(): Promise<{ transcription: string; aiResponse: string } | null> {
+    const SILENCE_THRESHOLD = -50; // dB
+    const SILENCE_DURATION = 1500; // 1.5 seconds of silence before stopping
+
+    while (this.recordingStatus.isRecording && this.recording) {
+      try {
+        const status = await this.recording.getStatusAsync();
+        if (status.isRecording) {
+          const metering = status.metering || -160;
+          console.log('Current audio level:', metering);
+
+          if (metering < SILENCE_THRESHOLD) {
+            if (this.recordingStatus.silenceStart === 0) {
+              this.recordingStatus.silenceStart = Date.now();
+            } else if (Date.now() - this.recordingStatus.silenceStart > SILENCE_DURATION) {
+              console.log('Silence detected, stopping recording...');
+              // Don't call stopRecording here, just stop the actual recording
+              if (this.recording) {
+                const transcription = await this.stopVoiceRecording(this.recording);
+                this.recording = null;
+                
+                if (transcription) {
+                  console.log('Transcribed text:', transcription);
+                  const aiResponse = await this.getCounselingResponse(transcription, true);
+                  this.recordingStatus.isRecording = false;
+                  this.emitRecordingState(false);
+                  return { transcription, aiResponse };
+                }
+              }
+              break;
+            }
+          } else {
+            this.recordingStatus.silenceStart = 0;
+          }
+          
+          this.recordingStatus.lastVolume = metering;
+        }
+        await new Promise(resolve => setTimeout(resolve, 100)); // Check every 100ms
+      } catch (error) {
+        console.error('Error monitoring audio level:', error);
+        this.emitRecordingState(false);
+        break;
+      }
+    }
+    return null;
+  }
+
+  public async startVoiceRecording(): Promise<{ transcription: string; aiResponse: string } | null> {
     try {
       console.log('Requesting audio recording permissions...');
       const permission = await Audio.requestPermissionsAsync();
@@ -60,14 +143,83 @@ Additional guidelines for your responses:
       });
 
       console.log('Starting recording...');
-      const recording = new Audio.Recording();
-      await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-      await recording.startAsync();
+      this.recording = new Audio.Recording();
+      await this.recording.prepareToRecordAsync({
+        ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
+        android: {
+          ...Audio.RecordingOptionsPresets.HIGH_QUALITY.android,
+          extension: '.m4a',
+          sampleRate: 44100,
+          numberOfChannels: 1,
+          bitRate: 128000,
+        },
+        ios: {
+          ...Audio.RecordingOptionsPresets.HIGH_QUALITY.ios,
+          extension: '.m4a',
+          sampleRate: 44100,
+          numberOfChannels: 1,
+          bitRate: 128000,
+          linearPCMBitDepth: 16,
+          linearPCMIsBigEndian: false,
+          linearPCMIsFloat: false,
+        },
+      });
       
-      return recording;
+      this.recordingStatus = {
+        isRecording: true,
+        lastVolume: 0,
+        silenceStart: Date.now()
+      };
+
+      await this.recording.startAsync();
+      this.emitRecordingState(true);
+      return await this.monitorAudioLevel();
     } catch (error) {
       console.error('Failed to start recording:', error);
+      this.emitRecordingState(false);
       throw error;
+    }
+  }
+
+  public async stopRecording(): Promise<{ transcription: string; aiResponse: string } | null> {
+    if (!this.recording || !this.recordingStatus.isRecording) return null;
+
+    try {
+      const transcription = await this.stopVoiceRecording(this.recording);
+      this.recording = null;
+      
+      if (transcription) {
+        console.log('Transcribed text:', transcription);
+        const aiResponse = await this.getCounselingResponse(transcription, true);
+        
+        // Only emit recording state change after we have the response
+        this.recordingStatus.isRecording = false;
+        this.emitRecordingState(false);
+        
+        return { transcription, aiResponse };
+      }
+      
+      this.recordingStatus.isRecording = false;
+      this.emitRecordingState(false);
+      return null;
+    } catch (error) {
+      console.error('Error stopping recording:', error);
+      this.recordingStatus.isRecording = false;
+      this.emitRecordingState(false);
+      throw error;
+    }
+  }
+
+  public async cancelRecording(): Promise<void> {
+    if (this.recording) {
+      this.recordingStatus.isRecording = false;
+      this.emitRecordingState(false);
+      try {
+        await this.recording.stopAndUnloadAsync();
+      } catch (error) {
+        console.error('Error canceling recording:', error);
+      }
+      this.recording = null;
     }
   }
 
@@ -77,20 +229,30 @@ Additional guidelines for your responses:
       const uri = recording.getURI();
       if (!uri) throw new Error('No recording URI available');
 
-      // Convert the audio to base64
-      const base64Audio = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
+      // Create form data with the audio file
+      const formData = new FormData();
+      formData.append('file', {
+        uri: uri,
+        type: 'audio/m4a',
+        name: 'audio.m4a'
+      } as any);
+      formData.append('model', 'whisper-1');
+
+      // Send to OpenAI for transcription using fetch
+      const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        },
+        body: formData
       });
 
-      // Send to OpenAI for transcription
-      const transcript = await this.openai.audio.transcriptions.create({
-        file: new File([Buffer.from(base64Audio, 'base64')], 'audio.m4a', {
-          type: 'audio/m4a',
-        }),
-        model: 'whisper-1',
-      });
+      if (!response.ok) {
+        throw new Error(`OpenAI API error: ${response.status}`);
+      }
 
-      return transcript.text;
+      const result = await response.json();
+      return result.text;
     } catch (error) {
       console.error('Failed to stop recording:', error);
       throw error;
@@ -103,13 +265,28 @@ Additional guidelines for your responses:
         await this.sound.unloadAsync();
       }
 
-      const mp3Response = await this.openai.audio.speech.create({
-        model: 'tts-1',
-        voice: 'onyx', // Using a deep, wise-sounding voice for Solomon
-        input: text,
+      // Make the text-to-speech request using fetch
+      const response = await fetch('https://api.openai.com/v1/audio/speech', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'tts-1',
+          voice: 'onyx',
+          input: text,
+        })
       });
 
-      const base64Audio = Buffer.from(await mp3Response.arrayBuffer()).toString('base64');
+      if (!response.ok) {
+        throw new Error(`OpenAI API error: ${response.status}`);
+      }
+
+      // Get the audio data as a blob
+      const audioData = await response.arrayBuffer();
+      // Convert to base64
+      const base64Audio = this.arrayBufferToBase64(audioData);
       const audioUri = `${FileSystem.documentDirectory}response.mp3`;
       
       await FileSystem.writeAsStringAsync(audioUri, base64Audio, {
@@ -125,13 +302,25 @@ Additional guidelines for your responses:
     }
   }
 
+  private arrayBufferToBase64(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  }
+
   public async getCounselingResponse(userMessage: string, useVoice: boolean = false): Promise<string> {
     try {
+      console.log('Starting getCounselingResponse with message:', userMessage);
+      
       this.conversationHistory.push({
         role: "user",
         content: userMessage
       });
 
+      console.log('Making OpenAI API call...');
       const response = await this.openai.chat.completions.create({
         model: "gpt-4",
         messages: this.conversationHistory,
@@ -139,8 +328,12 @@ Additional guidelines for your responses:
         max_tokens: 500,
       });
 
+      console.log('Received OpenAI API response:', response);
+
       const aiResponse = response.choices[0]?.message?.content || 
         "I apologize, but I'm unable to provide a response at this moment. Please try again.";
+
+      console.log('AI Response:', aiResponse);
 
       this.conversationHistory.push({
         role: "assistant",
@@ -155,13 +348,30 @@ Additional guidelines for your responses:
       }
 
       if (useVoice) {
+        console.log('Generating voice response...');
         await this.generateVoiceResponse(aiResponse);
       }
 
       return aiResponse;
-    } catch (error) {
-      console.error('Error in AI response:', error);
-      throw new Error('Failed to get AI response. Please try again later.');
+    } catch (error: any) {
+      console.error('Detailed error in AI response:', {
+        error: error,
+        message: error.message,
+        status: error.status,
+        response: error.response,
+      });
+      
+      // Check if it's an API key error
+      if (error.message?.includes('API key')) {
+        throw new Error('Invalid or missing OpenAI API key. Please check your configuration.');
+      }
+      
+      // Check if it's a rate limit error
+      if (error.status === 429) {
+        throw new Error('Rate limit exceeded. Please try again in a few moments.');
+      }
+
+      throw new Error('Failed to get AI response: ' + error.message);
     }
   }
 

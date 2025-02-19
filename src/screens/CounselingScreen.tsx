@@ -17,16 +17,59 @@ const CounselingScreen = () => {
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const aiService = AIService.getInstance();
 
   useEffect(() => {
     setupAudio();
-    return () => {
-      if (recording) {
-        recording.stopAndUnloadAsync();
+    const unsubscribe = aiService.onRecordingStateChange(async (isRecording) => {
+      console.log('Recording state changed:', isRecording);
+      setIsRecording(isRecording);
+      
+      if (!isRecording) {
+        try {
+          setIsLoading(true);
+          console.log('Stopping recording and waiting for result...');
+          const result = await aiService.stopRecording();
+          console.log('Got recording result:', result);
+          
+          if (result) {
+            const { transcription, aiResponse } = result;
+            console.log('Adding messages to chat:', { transcription, aiResponse });
+            
+            setMessages(prev => [
+              ...prev,
+              {
+                id: Date.now().toString(),
+                text: transcription.trim(),
+                sender: 'user',
+                timestamp: new Date(),
+              },
+              {
+                id: (Date.now() + 1).toString(),
+                text: aiResponse,
+                sender: 'ai',
+                timestamp: new Date(),
+              }
+            ]);
+          }
+        } catch (error) {
+          console.error('Error handling recording stop:', error);
+          setMessages(prev => [...prev, {
+            id: Date.now().toString(),
+            text: "I apologize, but I'm experiencing some difficulty processing your message. Please try again.",
+            sender: 'ai',
+            timestamp: new Date(),
+          }]);
+        } finally {
+          setIsLoading(false);
+        }
       }
+    });
+
+    return () => {
+      unsubscribe();
+      aiService.cancelRecording();
       aiService.stopAndUnloadSound();
     };
   }, []);
@@ -43,8 +86,12 @@ const CounselingScreen = () => {
   }, []);
 
   useEffect(() => {
-    // Scroll to bottom when messages change
-    scrollViewRef.current?.scrollToEnd({ animated: true });
+    // Scroll to bottom whenever messages change
+    if (scrollViewRef.current) {
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
   }, [messages]);
 
   const setupAudio = async () => {
@@ -59,33 +106,46 @@ const CounselingScreen = () => {
     }
   };
 
-  const startRecording = async () => {
-    try {
-      const newRecording = await aiService.startVoiceRecording();
-      setRecording(newRecording);
-      setIsRecording(true);
-    } catch (error) {
-      console.error('Failed to start recording:', error);
-    }
-  };
-
-  const stopRecording = async () => {
-    if (!recording) return;
-
-    try {
-      setIsRecording(false);
-      setIsLoading(true);
-      
-      const transcription = await aiService.stopVoiceRecording(recording);
-      setRecording(null);
-
-      if (transcription) {
-        await handleMessage(transcription, true);
+  const toggleRecording = async () => {
+    if (isRecording) {
+      await aiService.cancelRecording();
+    } else {
+      try {
+        setIsLoading(true);
+        const result = await aiService.startVoiceRecording();
+        
+        if (result) {
+          const { transcription, aiResponse } = result;
+          console.log('Got voice conversation result:', { transcription, aiResponse });
+          
+          // Add user's transcribed message
+          setMessages(prev => [
+            ...prev,
+            {
+              id: Date.now().toString(),
+              text: transcription.trim(),
+              sender: 'user',
+              timestamp: new Date(),
+            },
+            {
+              id: (Date.now() + 1).toString(),
+              text: aiResponse,
+              sender: 'ai',
+              timestamp: new Date(),
+            }
+          ]);
+        }
+      } catch (error) {
+        console.error('Failed to start recording:', error);
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          text: "I apologize, but I'm experiencing some difficulty processing your message. Please try again.",
+          sender: 'ai',
+          timestamp: new Date(),
+        }]);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error('Failed to stop recording:', error);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -122,6 +182,7 @@ const CounselingScreen = () => {
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
+      setIsRecording(false);
     }
   };
 
@@ -183,7 +244,7 @@ const CounselingScreen = () => {
         />
         <TouchableOpacity
           style={[styles.iconButton, isRecording && styles.recordingButton]}
-          onPress={isRecording ? stopRecording : startRecording}
+          onPress={toggleRecording}
           disabled={isLoading}
         >
           <Ionicons 
