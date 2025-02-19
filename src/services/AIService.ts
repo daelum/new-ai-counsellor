@@ -375,23 +375,48 @@ Additional guidelines for your responses:
     }
   }
 
-  public async analyzeBibleVerse(verse: string): Promise<string> {
+  public async analyzeBibleVerse(verse: string): Promise<{ meaning: string; application: string }> {
     try {
       const response = await this.openai.chat.completions.create({
         model: "gpt-4",
         messages: [
           {
             role: "system",
-            content: "You are Solomon, a biblical scholar providing insights into Bible verses. Focus on: 1) Historical context 2) Spiritual meaning 3) Practical application 4) Connection to other relevant verses"
+            content: "You are Solomon, a biblical scholar providing insights into Bible verses. For each verse, provide two sections: 1) Meaning: Provide historical context and spiritual significance in a clear, continuous paragraph format. 2) Application: Provide practical ways to apply this verse in daily life in a clear, continuous paragraph format. Keep each section concise but meaningful. Do not use numbering or bullet points."
           },
-          { role: "user", content: `Please analyze this Bible verse: ${verse}` }
+          { 
+            role: "user", 
+            content: `Please analyze this Bible verse: ${verse}` 
+          }
         ],
         temperature: 0.7,
-        max_tokens: 300,
+        max_tokens: 500,
       });
 
-      return response.choices[0]?.message?.content || 
-        "I apologize, but I'm unable to analyze this verse at the moment. Please try again.";
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        return {
+          meaning: "Analysis not available at this time.",
+          application: "Application insights not available at this time."
+        };
+      }
+
+      // Split the content into meaning and application sections
+      const sections = content.split(/Meaning:|Application:/i);
+      
+      // Clean up the sections by removing any remaining numbers, bullets, or list markers
+      const cleanText = (text: string) => {
+        return text
+          ?.trim()
+          .replace(/^\d+[\.)]\s*/gm, '')  // Remove numbered list markers
+          .replace(/^[-•*]\s*/gm, '')     // Remove bullet points
+          .trim();
+      };
+
+      return {
+        meaning: cleanText(sections[1]) || "Analysis not available at this time.",
+        application: cleanText(sections[2]) || "Application insights not available at this time."
+      };
     } catch (error) {
       console.error('Error in Bible verse analysis:', error);
       throw new Error('Failed to analyze Bible verse. Please try again later.');
@@ -407,7 +432,7 @@ Additional guidelines for your responses:
         messages: [
           {
             role: "system",
-            content: `You are a Bible expert specializing in the NIV translation. When given a search query, return 3 relevant Bible verses that best match the query. Return ONLY a JSON array of objects, each with 'verse' and 'reference' fields. Format: [{"verse": "full verse text", "reference": "Book Chapter:Verse"}]. No additional text or explanation.`
+            content: `You are a Bible expert specializing in the NIV translation. When given a search query, return up to 10 relevant Bible verses that best match the query. Return ONLY a JSON array of objects, each with 'verse' and 'reference' fields. Format: [{"verse": "full verse text", "reference": "Book Chapter:Verse"}]. No additional text or explanation.`
           },
           {
             role: "user",
@@ -415,7 +440,7 @@ Additional guidelines for your responses:
           }
         ],
         temperature: 0.7,
-        max_tokens: 500,
+        max_tokens: 1000,
       });
 
       const content = response.choices[0]?.message?.content;
