@@ -6,6 +6,7 @@ import { ThemeProvider, createTheme } from '@rneui/themed';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import { ActivityIndicator, View } from 'react-native';
 
 // Import screens
 import HomeScreen from './src/screens/HomeScreen';
@@ -14,9 +15,39 @@ import BibleScreen from './src/screens/BibleScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import DevotionalScreen from './src/screens/DevotionalScreen';
 import PrayerBoardScreen from './src/screens/PrayerBoardScreen';
+import LoginScreen from './src/screens/LoginScreen';
+import RegisterScreen from './src/screens/RegisterScreen';
+
+// Import context
+import { UserProvider, useUser } from './src/contexts/UserContext';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
+const AuthStack = createNativeStackNavigator();
+
+function AuthNavigator() {
+  return (
+    <AuthStack.Navigator
+      screenOptions={{
+        headerStyle: {
+          backgroundColor: '#202123',
+        },
+        headerTintColor: '#ffffff',
+      }}
+    >
+      <AuthStack.Screen 
+        name="Login" 
+        component={LoginScreen}
+        options={{ headerShown: false }}
+      />
+      <AuthStack.Screen 
+        name="Register" 
+        component={RegisterScreen}
+        options={{ headerShown: false }}
+      />
+    </AuthStack.Navigator>
+  );
+}
 
 function HomeStack() {
   return (
@@ -44,6 +75,104 @@ function HomeStack() {
         }}
       />
     </Stack.Navigator>
+  );
+}
+
+function TabNavigator() {
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        headerStyle: {
+          backgroundColor: '#202123',
+          borderBottomWidth: 1,
+          borderBottomColor: '#444654',
+        },
+        headerTintColor: '#ffffff',
+        tabBarStyle: {
+          backgroundColor: '#202123',
+          borderTopColor: '#444654',
+          borderTopWidth: 1,
+          paddingBottom: 5,
+          height: 60,
+        },
+        tabBarActiveTintColor: '#10a37f',
+        tabBarInactiveTintColor: '#666980',
+        tabBarIcon: ({ focused, color, size }) => {
+          let iconName: keyof typeof Ionicons.glyphMap;
+          
+          if (route.name === 'Home') {
+            iconName = focused ? 'home' : 'home-outline';
+          } else if (route.name === 'Counseling') {
+            iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
+          } else if (route.name === 'Bible') {
+            iconName = focused ? 'book' : 'book-outline';
+          } else if (route.name === 'Devotional') {
+            iconName = focused ? 'heart' : 'heart-outline';
+          } else if (route.name === 'Profile') {
+            iconName = focused ? 'person' : 'person-outline';
+          } else {
+            iconName = 'help-outline';
+          }
+          
+          return <Ionicons name={iconName} size={size} color={color} />;
+        },
+      })}
+    >
+      <Tab.Screen 
+        name="Home" 
+        component={HomeStack}
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Tab.Screen 
+        name="Counseling" 
+        component={CounselingScreen}
+        options={{
+          title: 'Chat',
+        }}
+      />
+      <Tab.Screen 
+        name="Bible" 
+        component={BibleScreen}
+        options={{
+          title: 'Bible',
+        }}
+      />
+      <Tab.Screen 
+        name="Devotional" 
+        component={DevotionalScreen}
+        options={{
+          title: 'Devotional',
+        }}
+      />
+      <Tab.Screen 
+        name="Profile" 
+        component={ProfileScreen}
+        options={{
+          title: 'Profile',
+        }}
+      />
+    </Tab.Navigator>
+  );
+}
+
+function NavigationWrapper() {
+  const { user, isLoading } = useUser();
+
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#343541' }}>
+        <ActivityIndicator size="large" color="#10a37f" />
+      </View>
+    );
+  }
+
+  return (
+    <NavigationContainer theme={navigationTheme}>
+      <StatusBar style="light" />
+      {user ? <TabNavigator /> : <AuthNavigator />}
+    </NavigationContainer>
   );
 }
 
@@ -92,83 +221,9 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ThemeProvider theme={theme}>
-        <NavigationContainer theme={navigationTheme}>
-          <StatusBar style="light" />
-          <Tab.Navigator
-            screenOptions={({ route }) => ({
-              headerStyle: {
-                backgroundColor: '#202123',
-                borderBottomWidth: 1,
-                borderBottomColor: '#444654',
-              },
-              headerTintColor: '#ffffff',
-              tabBarStyle: {
-                backgroundColor: '#202123',
-                borderTopColor: '#444654',
-                borderTopWidth: 1,
-                paddingBottom: 5,
-                height: 60,
-              },
-              tabBarActiveTintColor: '#10a37f',
-              tabBarInactiveTintColor: '#666980',
-              tabBarIcon: ({ focused, color, size }) => {
-                let iconName: keyof typeof Ionicons.glyphMap;
-                
-                if (route.name === 'Home') {
-                  iconName = focused ? 'home' : 'home-outline';
-                } else if (route.name === 'Counseling') {
-                  iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
-                } else if (route.name === 'Bible') {
-                  iconName = focused ? 'book' : 'book-outline';
-                } else if (route.name === 'Devotional') {
-                  iconName = focused ? 'heart' : 'heart-outline';
-                } else if (route.name === 'Profile') {
-                  iconName = focused ? 'person' : 'person-outline';
-                } else {
-                  iconName = 'help-outline';
-                }
-                
-                return <Ionicons name={iconName} size={size} color={color} />;
-              },
-            })}
-          >
-            <Tab.Screen 
-              name="Home" 
-              component={HomeStack}
-              options={{
-                headerShown: false,
-              }}
-            />
-            <Tab.Screen 
-              name="Counseling" 
-              component={CounselingScreen}
-              options={{
-                title: 'Chat',
-              }}
-            />
-            <Tab.Screen 
-              name="Bible" 
-              component={BibleScreen}
-              options={{
-                title: 'Bible',
-              }}
-            />
-            <Tab.Screen 
-              name="Devotional" 
-              component={DevotionalScreen}
-              options={{
-                title: 'Devotional',
-              }}
-            />
-            <Tab.Screen 
-              name="Profile" 
-              component={ProfileScreen}
-              options={{
-                title: 'Profile',
-              }}
-            />
-          </Tab.Navigator>
-        </NavigationContainer>
+        <UserProvider>
+          <NavigationWrapper />
+        </UserProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );

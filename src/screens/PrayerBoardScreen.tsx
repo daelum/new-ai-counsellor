@@ -7,84 +7,91 @@ import {
   TextInput,
   Modal,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Text, Button } from '@rneui/themed';
 import { Ionicons } from '@expo/vector-icons';
-
-// Temporary type for prayer requests until we set up the backend
-type PrayerRequest = {
-  id: string;
-  userId: string;
-  username: string;
-  content: string;
-  timestamp: Date;
-  prayerCount: number;
-  hasPrayed: boolean;
-};
+import FirebaseService, { Prayer } from '../services/FirebaseService';
+import { useUser } from '../contexts/UserContext';
 
 const PrayerBoardScreen = () => {
-  const [prayerRequests, setPrayerRequests] = useState<PrayerRequest[]>([]);
+  const { user } = useUser();
+  const [prayerRequests, setPrayerRequests] = useState<Prayer[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [newPrayer, setNewPrayer] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Temporary mock data - replace with actual API calls later
   useEffect(() => {
-    setPrayerRequests([
-      {
-        id: '1',
-        userId: 'user1',
-        username: 'John Doe',
-        content: 'Please pray for my upcoming surgery next week.',
-        timestamp: new Date(),
-        prayerCount: 5,
-        hasPrayed: false,
-      },
-      {
-        id: '2',
-        userId: 'user2',
-        username: 'Jane Smith',
-        content: 'Seeking prayers for my family as we go through a difficult time.',
-        timestamp: new Date(),
-        prayerCount: 3,
-        hasPrayed: false,
-      },
-    ]);
+    loadPrayers();
   }, []);
 
-  const handleAddPrayer = () => {
+  const loadPrayers = async () => {
+    try {
+      const prayers = await FirebaseService.getAllPrayers();
+      setPrayerRequests(prayers);
+    } catch (error) {
+      console.error('Error loading prayers:', error);
+      Alert.alert('Error', 'Failed to load prayers. Please try again later.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAddPrayer = async () => {
+    if (!user) return;
+    
     if (newPrayer.trim() === '') {
       Alert.alert('Error', 'Please enter your prayer request');
       return;
     }
 
-    const newRequest: PrayerRequest = {
-      id: Date.now().toString(),
-      userId: 'currentUser', // Replace with actual user ID
-      username: 'Current User', // Replace with actual username
-      content: newPrayer,
-      timestamp: new Date(),
-      prayerCount: 0,
-      hasPrayed: false,
-    };
+    try {
+      setIsLoading(true);
+      const prayer: Omit<Prayer, 'id'> = {
+        userId: user.id,
+        username: user.username,
+        content: newPrayer,
+        timestamp: new Date(),
+        prayerCount: 0,
+        prayedBy: [],
+      };
 
-    setPrayerRequests([newRequest, ...prayerRequests]);
-    setNewPrayer('');
-    setModalVisible(false);
+      await FirebaseService.addPrayer(prayer);
+      await loadPrayers();
+      setNewPrayer('');
+      setModalVisible(false);
+    } catch (error) {
+      console.error('Error adding prayer:', error);
+      Alert.alert('Error', 'Failed to add prayer. Please try again later.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handlePrayerReaction = (id: string) => {
-    setPrayerRequests(
-      prayerRequests.map((request) =>
-        request.id === id
-          ? {
-              ...request,
-              prayerCount: request.hasPrayed ? request.prayerCount - 1 : request.prayerCount + 1,
-              hasPrayed: !request.hasPrayed,
-            }
-          : request
-      )
+  const handlePrayerReaction = async (id: string) => {
+    if (!user) return;
+
+    try {
+      const prayer = prayerRequests.find(p => p.id === id);
+      if (!prayer) return;
+
+      const hasPrayed = prayer.prayedBy.includes(user.id);
+      
+      await FirebaseService.updatePrayerCount(id, user.id, !hasPrayed);
+      await loadPrayers();
+    } catch (error) {
+      console.error('Error updating prayer reaction:', error);
+      Alert.alert('Error', 'Failed to update prayer reaction. Please try again later.');
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#10a37f" />
+      </View>
     );
-  };
+  }
 
   return (
     <View style={styles.container}>
@@ -106,19 +113,19 @@ const PrayerBoardScreen = () => {
             <TouchableOpacity
               style={[
                 styles.prayButton,
-                request.hasPrayed && styles.prayButtonActive,
+                request.prayedBy.includes(user?.id || '') && styles.prayButtonActive,
               ]}
               onPress={() => handlePrayerReaction(request.id)}
             >
               <Ionicons
                 name="hand-right"
                 size={20}
-                color={request.hasPrayed ? '#10a37f' : '#666980'}
+                color={request.prayedBy.includes(user?.id || '') ? '#10a37f' : '#666980'}
               />
               <Text
                 style={[
                   styles.prayButtonText,
-                  request.hasPrayed && styles.prayButtonTextActive,
+                  request.prayedBy.includes(user?.id || '') && styles.prayButtonTextActive,
                 ]}
               >
                 🙏 {request.prayerCount} Praying
@@ -173,6 +180,12 @@ const PrayerBoardScreen = () => {
 };
 
 const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#343541',
+  },
   container: {
     flex: 1,
     backgroundColor: '#343541',
