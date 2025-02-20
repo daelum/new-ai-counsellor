@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, ScrollView, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Dimensions, TouchableOpacity, Alert, Modal } from 'react-native';
+import { View, ScrollView, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Dimensions, TouchableOpacity, Alert, Modal, TouchableWithoutFeedback } from 'react-native';
 import { Text, Input, Button, ListItem } from '@rneui/themed';
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
@@ -27,6 +27,284 @@ type FirestoreMessage = {
   conversationId: string;
 }
 
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: '#343541',
+      position: 'relative',
+    },
+    messagesContainer: {
+      flex: 1,
+      marginBottom: 49,
+    },
+    messagesContent: {
+      padding: 10,
+      paddingBottom: 10,
+    },
+    loadingContainer: {
+      padding: 20,
+      alignItems: 'center',
+    },
+    messageContainer: {
+      marginVertical: 5,
+      paddingHorizontal: 15,
+      paddingVertical: 10,
+    },
+    userMessageContainer: {
+      backgroundColor: '#444654',
+    },
+    aiMessageContainer: {
+      backgroundColor: '#343541',
+    },
+    messageContent: {
+      maxWidth: '100%',
+    },
+    messageText: {
+      fontSize: 16,
+      lineHeight: 24,
+    },
+    userMessageText: {
+      color: '#ffffff',
+    },
+    aiMessageText: {
+      color: '#ffffff',
+    },
+    inputWrapper: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      backgroundColor: '#202123',
+      borderTopWidth: 1,
+      borderTopColor: '#444654',
+      minHeight: 49,
+    },
+    inputContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      minHeight: 49,
+      backgroundColor: 'transparent',
+    },
+    input: {
+      flex: 1,
+      paddingRight: 8,
+      backgroundColor: 'transparent',
+      paddingHorizontal: 0,
+      marginHorizontal: 0,
+      paddingVertical: 0,
+      marginVertical: 0,
+      borderBottomWidth: 0,
+    },
+    inputField: {
+      borderWidth: 1,
+      borderColor: '#444654',
+      borderRadius: 16,
+      paddingHorizontal: 12,
+      backgroundColor: '#343541',
+      minHeight: 36,
+      maxHeight: 120,
+      marginTop: 0,
+      marginBottom: 0,
+      paddingVertical: 4,
+    },
+    inputText: {
+      color: '#ffffff',
+      fontSize: 15,
+      textAlign: 'left',
+      textAlignVertical: 'center',
+      paddingTop: 0,
+      paddingBottom: 0,
+      lineHeight: 20,
+      height: '100%',
+    },
+    buttonsContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginLeft: 8,
+      height: '100%',
+    },
+    iconButton: {
+      width: 36,
+      height: 36,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginLeft: 6,
+      borderRadius: 18,
+      backgroundColor: '#343541',
+      borderWidth: 1,
+      borderColor: '#444654',
+    },
+    recordingButton: {
+      backgroundColor: 'rgba(255, 59, 48, 0.1)',
+      borderColor: '#ff3b30',
+    },
+    activeIconButton: {
+      backgroundColor: '#10a37f',
+      borderColor: '#10a37f',
+    },
+    disabledIconButton: {
+      backgroundColor: '#343541',
+      borderColor: '#444654',
+      opacity: 0.5,
+    },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#202123',
+    borderBottomWidth: 1,
+    borderBottomColor: '#444654',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#ffffff',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerButton: {
+    padding: 8,
+    marginLeft: 8,
+  },
+  browseButton: {
+    padding: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  conversationModalContent: {
+    backgroundColor: '#343541',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#444654',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#ffffff',
+  },
+  closeButton: {
+    padding: 4,
+  },
+  conversationsList: {
+    padding: 16,
+  },
+  conversationItem: {
+    backgroundColor: '#444654',
+    marginBottom: 8,
+    borderRadius: 8,
+  },
+  conversationTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  conversationSubtitle: {
+    color: '#666980',
+    fontSize: 14,
+    marginTop: 4,
+  },
+  modalLoading: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  noConversations: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  noConversationsText: {
+    color: '#666980',
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  recordingModalContent: {
+    backgroundColor: '#444654',
+    padding: 20,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    alignItems: 'center',
+  },
+  recordingTimerText: {
+    color: '#ffffff',
+    fontSize: 24,
+    fontVariant: ['tabular-nums'],
+    marginBottom: 20,
+  },
+  recordingModalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 40,
+  },
+  recordingModalButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recordingCancelButton: {
+    backgroundColor: 'rgba(220, 53, 69, 0.1)',
+  },
+  recordingSendButton: {
+    backgroundColor: 'rgba(16, 163, 127, 0.1)',
+  },
+});
+
+const RecordingModal = ({ 
+  isVisible, 
+  duration, 
+  onCancel, 
+  onSend 
+}: { 
+  isVisible: boolean; 
+  duration: number;
+  onCancel: () => void;
+  onSend: () => void;
+}) => (
+  <Modal
+    animationType="slide"
+    transparent={true}
+    visible={isVisible}
+    onRequestClose={onCancel}
+  >
+    <TouchableWithoutFeedback onPress={onCancel}>
+      <View style={styles.modalOverlay}>
+        <TouchableWithoutFeedback>
+          <View style={styles.recordingModalContent}>
+            <Text style={styles.recordingTimerText}>
+              {new Date(duration * 1000).toISOString().substr(14, 5)}
+            </Text>
+            <View style={styles.recordingModalButtons}>
+              <TouchableOpacity onPress={onCancel} style={[styles.recordingModalButton, styles.recordingCancelButton]}>
+                <Ionicons name="close" size={24} color="#dc3545" />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={onSend} style={[styles.recordingModalButton, styles.recordingSendButton]}>
+                <Ionicons name="checkmark" size={24} color="#10a37f" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableWithoutFeedback>
+      </View>
+    </TouchableWithoutFeedback>
+  </Modal>
+);
+
 const CounselingScreen = () => {
   const navigation = useNavigation();
   const { user } = useUser();
@@ -42,6 +320,9 @@ const CounselingScreen = () => {
   const [isLoadingConversations, setIsLoadingConversations] = useState(false);
   const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
   const activeConversationRef = useRef<string | null>(null);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [showRecordingModal, setShowRecordingModal] = useState(false);
+  const recordingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Update messagesRef whenever messages change
   useEffect(() => {
@@ -204,7 +485,7 @@ const CounselingScreen = () => {
       );
 
       // Get AI response
-      const aiResponseText = await aiService.getCounselingResponse(text, useVoice);
+      const aiResponseText = await aiService.getCounselingResponse(text, false);
 
       // Immediately display AI response
       const tempAiMessageId = Date.now().toString();
@@ -231,6 +512,18 @@ const CounselingScreen = () => {
         )
       );
 
+      setIsLoading(false);
+
+      // Generate voice response after UI is updated
+      if (useVoice) {
+        try {
+          await aiService.generateVoiceResponse(aiResponseText);
+        } catch (error) {
+          console.error('Error generating voice response:', error);
+          // Don't show an error to the user since the text response was successful
+        }
+      }
+
     } catch (error) {
       console.error('Error in handleMessage:', error);
       const errorMessage: Message = {
@@ -240,121 +533,116 @@ const CounselingScreen = () => {
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, errorMessage]);
-    } finally {
       setIsLoading(false);
     }
   };
 
-  const toggleRecording = async () => {
-    if (!auth.currentUser?.uid) {
-      console.error('No authenticated user found');
-      return;
+  const startRecordingTimer = () => {
+    setRecordingDuration(0);
+    recordingTimer.current = setInterval(() => {
+      setRecordingDuration(prev => prev + 1);
+    }, 1000);
+  };
+
+  const stopRecordingTimer = () => {
+    if (recordingTimer.current) {
+      clearInterval(recordingTimer.current);
+      recordingTimer.current = null;
     }
+    setRecordingDuration(0);
+  };
 
+  const handleStartRecording = async () => {
     try {
-      if (isRecording) {
-        console.log('Stopping recording...');
-        setIsLoading(true);
-        
-        // Get the recording result
-        const result = await aiService.stopRecording();
-        console.log('Got recording result:', result);
-        
-        if (!result) {
-          console.error('No result from voice recording');
-          return;
-        }
-
-        const { transcription, aiResponse } = result;
-        
-        // Ensure we have a conversation
-        let conversation = currentConversation;
-        if (!conversation) {
-          console.log('Creating new conversation...');
-          conversation = await createNewConversation();
-          if (!conversation) {
-            throw new Error('Failed to create conversation');
-          }
-          console.log('Created new conversation:', conversation);
-        }
-
-        // Immediately display user's transcribed message
-        const userMessageId = Date.now().toString();
-        const userMessage: Message = {
-          id: userMessageId,
-          text: transcription.trim(),
-          sender: 'user',
-          timestamp: new Date(),
-        };
-        console.log('Adding user message to UI:', userMessage);
-        setMessages(prev => [...prev, userMessage]);
-
-        // Save transcribed message to Firestore
-        console.log('Saving user message to Firestore...');
-        const savedUserMessage = await FirebaseService.addMessage(
-          conversation.id,
-          transcription.trim(),
-          'user',
-          auth.currentUser.uid
-        );
-        console.log('Saved user message:', savedUserMessage);
-
-        // Update user message with correct ID
-        setMessages(prev => 
-          prev.map(msg => 
-            msg.id === userMessageId ? { ...msg, id: savedUserMessage.id } : msg
-          )
-        );
-
-        // Immediately display AI response
-        const aiMessageId = Date.now().toString();
-        const aiMessage: Message = {
-          id: aiMessageId,
-          text: aiResponse,
-          sender: 'ai',
-          timestamp: new Date(),
-        };
-        console.log('Adding AI response to UI:', aiMessage);
-        setMessages(prev => [...prev, aiMessage]);
-
-        // Save AI response to Firestore
-        console.log('Saving AI response to Firestore...');
-        const savedAiMessage = await FirebaseService.addMessage(
-          conversation.id,
-          aiResponse,
-          'assistant',
-          auth.currentUser.uid
-        );
-        console.log('Saved AI response:', savedAiMessage);
-
-        // Update AI message with correct ID
-        setMessages(prev => 
-          prev.map(msg => 
-            msg.id === aiMessageId ? { ...msg, id: savedAiMessage.id } : msg
-          )
-        );
-      } else {
-        console.log('Starting recording...');
-        await aiService.startVoiceRecording();
-      }
+      await aiService.startVoiceRecording();
+      setIsRecording(true);
+      setShowRecordingModal(true);
+      startRecordingTimer();
     } catch (error) {
-      console.error('Error in toggleRecording:', error);
-      if (error instanceof Error) {
-        console.error('Error details:', {
-          message: error.message,
-          stack: error.stack,
-          name: error.name
-        });
+      console.error('Error starting recording:', error);
+      Alert.alert('Error', 'Failed to start recording. Please try again.');
+    }
+  };
+
+  const handleStopRecording = async () => {
+    try {
+      setIsLoading(true);
+      stopRecordingTimer();
+      setShowRecordingModal(false);
+      
+      const result = await aiService.stopRecording();
+      if (!result) {
+        console.error('No result from voice recording');
+        return;
       }
-      const errorMessage: Message = {
-        id: Date.now().toString(),
-        text: "Error in voice chat flow: " + (error instanceof Error ? error.message : 'Unknown error'),
+
+      const { transcription, aiResponse } = result;
+      
+      let conversation = currentConversation;
+      if (!conversation) {
+        console.log('Creating new conversation...');
+        conversation = await createNewConversation();
+        if (!conversation) {
+          throw new Error('Failed to create conversation');
+        }
+        console.log('Created new conversation:', conversation);
+      }
+
+      // Save and display user message
+      const userMessageId = Date.now().toString();
+      const userMessage: Message = {
+        id: userMessageId,
+        text: transcription,
+        sender: 'user',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, userMessage]);
+      await saveMessage(userMessage, 'user');
+
+      // Save and display AI message
+      const aiMessageId = (Date.now() + 1).toString();
+      const aiMessage: Message = {
+        id: aiMessageId,
+        text: aiResponse,
         sender: 'ai',
         timestamp: new Date(),
       };
-      setMessages(prev => [...prev, errorMessage]);
-    } finally {
+      setMessages(prev => [...prev, aiMessage]);
+      await saveMessage(aiMessage, 'assistant');
+
       setIsLoading(false);
+
+      // Generate voice response after UI is updated
+      try {
+        await aiService.generateVoiceResponse(aiResponse);
+      } catch (error) {
+        console.error('Error generating voice response:', error);
+        // Don't show an error to the user since the text response was successful
+      }
+
+    } catch (error) {
+      console.error('Error handling recording:', error);
+      Alert.alert('Error', 'Failed to process recording. Please try again.');
+      setIsLoading(false);
+    } finally {
+      setIsRecording(false);
+    }
+  };
+
+  const handleCancelRecording = async () => {
+    try {
+      await aiService.cancelRecording();
+      stopRecordingTimer();
+      setShowRecordingModal(false);
+      setIsRecording(false);
+    } catch (error) {
+      console.error('Error canceling recording:', error);
+    }
+  };
+
+  const toggleRecording = () => {
+    if (!isRecording) {
+      handleStartRecording();
     }
   };
 
@@ -534,214 +822,6 @@ const CounselingScreen = () => {
     activeConversationRef.current = null;
   };
 
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: '#343541',
-      position: 'relative',
-    },
-    messagesContainer: {
-      flex: 1,
-      marginBottom: 49,
-    },
-    messagesContent: {
-      padding: 10,
-      paddingBottom: 10,
-    },
-    loadingContainer: {
-      padding: 20,
-      alignItems: 'center',
-    },
-    messageContainer: {
-      marginVertical: 5,
-      paddingHorizontal: 15,
-      paddingVertical: 10,
-    },
-    userMessageContainer: {
-      backgroundColor: '#444654',
-    },
-    aiMessageContainer: {
-      backgroundColor: '#343541',
-    },
-    messageContent: {
-      maxWidth: '100%',
-    },
-    messageText: {
-      fontSize: 16,
-      lineHeight: 24,
-    },
-    userMessageText: {
-      color: '#ffffff',
-    },
-    aiMessageText: {
-      color: '#ffffff',
-    },
-    inputWrapper: {
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      backgroundColor: '#202123',
-      borderTopWidth: 1,
-      borderTopColor: '#444654',
-      minHeight: 49,
-    },
-    inputContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingVertical: 6,
-      paddingHorizontal: 12,
-      minHeight: 49,
-      backgroundColor: 'transparent',
-    },
-    input: {
-      flex: 1,
-      paddingRight: 8,
-      backgroundColor: 'transparent',
-      paddingHorizontal: 0,
-      marginHorizontal: 0,
-      paddingVertical: 0,
-      marginVertical: 0,
-      borderBottomWidth: 0,
-    },
-    inputField: {
-      borderWidth: 1,
-      borderColor: '#444654',
-      borderRadius: 16,
-      paddingHorizontal: 12,
-      backgroundColor: '#343541',
-      minHeight: 36,
-      maxHeight: 120,
-      marginTop: 0,
-      marginBottom: 0,
-      paddingVertical: 4,
-    },
-    inputText: {
-      color: '#ffffff',
-      fontSize: 15,
-      textAlign: 'left',
-      textAlignVertical: 'center',
-      paddingTop: 0,
-      paddingBottom: 0,
-      lineHeight: 20,
-      height: '100%',
-    },
-    buttonsContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginLeft: 8,
-      height: '100%',
-    },
-    iconButton: {
-      width: 36,
-      height: 36,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginLeft: 6,
-      borderRadius: 18,
-      backgroundColor: '#343541',
-      borderWidth: 1,
-      borderColor: '#444654',
-    },
-    recordingButton: {
-      backgroundColor: 'rgba(255, 59, 48, 0.1)',
-      borderColor: '#ff3b30',
-    },
-    activeIconButton: {
-      backgroundColor: '#10a37f',
-      borderColor: '#10a37f',
-    },
-    disabledIconButton: {
-      backgroundColor: '#343541',
-      borderColor: '#444654',
-      opacity: 0.5,
-    },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      backgroundColor: '#202123',
-      borderBottomWidth: 1,
-      borderBottomColor: '#444654',
-    },
-    headerTitle: {
-      fontSize: 18,
-      fontWeight: 'bold',
-      color: '#ffffff',
-    },
-    headerButtons: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    headerButton: {
-      padding: 8,
-      marginLeft: 8,
-    },
-    browseButton: {
-      padding: 8,
-    },
-    modalContainer: {
-      flex: 1,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      justifyContent: 'flex-end',
-    },
-    modalContent: {
-      backgroundColor: '#343541',
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      maxHeight: '80%',
-    },
-    modalHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      padding: 16,
-      borderBottomWidth: 1,
-      borderBottomColor: '#444654',
-    },
-    modalTitle: {
-      fontSize: 18,
-      fontWeight: 'bold',
-      color: '#ffffff',
-    },
-    closeButton: {
-      padding: 4,
-    },
-    conversationsList: {
-      padding: 16,
-    },
-    conversationItem: {
-      backgroundColor: '#444654',
-      marginBottom: 8,
-      borderRadius: 8,
-    },
-    conversationTitle: {
-      color: '#ffffff',
-      fontSize: 16,
-      fontWeight: '600',
-    },
-    conversationSubtitle: {
-      color: '#666980',
-      fontSize: 14,
-      marginTop: 4,
-    },
-    modalLoading: {
-      padding: 32,
-      alignItems: 'center',
-    },
-    noConversations: {
-      padding: 32,
-      alignItems: 'center',
-    },
-    noConversationsText: {
-      color: '#666980',
-      fontSize: 16,
-      textAlign: 'center',
-    },
-  });
-
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -783,8 +863,8 @@ const CounselingScreen = () => {
         transparent={true}
         onRequestClose={() => setShowConversationsModal(false)}
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.conversationModalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Previous Conversations</Text>
               <TouchableOpacity
@@ -813,6 +893,13 @@ const CounselingScreen = () => {
           </View>
         </View>
       </Modal>
+
+      <RecordingModal
+        isVisible={showRecordingModal}
+        duration={recordingDuration}
+        onCancel={handleCancelRecording}
+        onSend={handleStopRecording}
+      />
 
       <View style={[
         styles.inputWrapper,

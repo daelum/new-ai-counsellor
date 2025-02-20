@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import { OPENAI_API_KEY } from '@env';
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import * as FileSystem from 'expo-file-system';
-import { Audio } from 'expo-av';
+import { Audio, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type EventCallback = (isRecording: boolean) => void;
@@ -320,18 +320,23 @@ Additional guidelines for your responses:
         try {
           await this.sound.stopAsync();
           await this.sound.unloadAsync();
-          this.sound = null;
         } catch (error) {
           console.error('Error cleaning up previous sound:', error);
         }
+        this.sound = null;
       }
 
-      // Set up audio mode first
+      // Set up audio mode first and wait for it to complete
+      console.log('Setting up audio mode...');
       await Audio.setAudioModeAsync({
         playsInSilentModeIOS: true,
         staysActiveInBackground: true,
         shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+        interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+        interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
       });
+      console.log('Audio mode set up complete');
 
       console.log('Making TTS request...');
       const response = await fetch('https://api.openai.com/v1/audio/speech', {
@@ -376,9 +381,28 @@ Additional guidelines for your responses:
         }
       });
 
+      // Add a small delay before playing to ensure audio system is ready
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
       console.log('Starting playback...');
       const playbackStatus = await this.sound.playAsync();
       console.log('Initial playback status:', playbackStatus);
+
+      // Wait for playback to complete
+      return new Promise((resolve, reject) => {
+        if (!this.sound) {
+          reject(new Error('Sound object is null'));
+          return;
+        }
+
+        this.sound.setOnPlaybackStatusUpdate((status) => {
+          if (status.isLoaded) {
+            if (status.didJustFinish) {
+              resolve();
+            }
+          }
+        });
+      });
     } catch (error) {
       console.error('Failed to generate or play voice response:', error);
       if (error instanceof Error) {
@@ -437,11 +461,7 @@ Additional guidelines for your responses:
         ];
       }
 
-      if (useVoice) {
-        console.log('Generating voice response...');
-        await this.generateVoiceResponse(aiResponse);
-      }
-
+      // Return the response immediately
       return aiResponse;
     } catch (error: any) {
       console.error('Detailed error in AI response:', {
