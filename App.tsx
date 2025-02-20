@@ -130,6 +130,7 @@ function TabNavigator() {
         component={CounselingScreen}
         options={{
           title: 'Chat',
+          headerShown: false,
         }}
       />
       <Tab.Screen 
