@@ -17,6 +17,7 @@ import DevotionalScreen from './src/screens/DevotionalScreen';
 import PrayerBoardScreen from './src/screens/PrayerBoardScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
+import DeepThoughtScreen from './src/screens/DeepThoughtScreen';
 
 // Import context
 import { UserProvider, useUser } from './src/contexts/UserContext';
@@ -24,6 +25,16 @@ import { UserProvider, useUser } from './src/contexts/UserContext';
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 const AuthStack = createNativeStackNavigator();
+
+// Update TabParamList type
+type TabParamList = {
+  Home: undefined;
+  Counseling: undefined;
+  Bible: undefined;
+  Devotional: undefined;
+  DeepThought: undefined;
+  Profile: undefined;
+};
 
 function AuthNavigator() {
   return (
@@ -108,6 +119,8 @@ function TabNavigator() {
             iconName = focused ? 'book' : 'book-outline';
           } else if (route.name === 'Devotional') {
             iconName = focused ? 'heart' : 'heart-outline';
+          } else if (route.name === 'DeepThought') {
+            iconName = focused ? 'bulb' : 'bulb-outline';
           } else if (route.name === 'Profile') {
             iconName = focused ? 'person' : 'person-outline';
           } else {
@@ -145,6 +158,14 @@ function TabNavigator() {
         component={DevotionalScreen}
         options={{
           title: 'Devotional',
+        }}
+      />
+      <Tab.Screen 
+        name="DeepThought" 
+        component={DeepThoughtScreen}
+        options={{
+          title: 'Deep Thought',
+          headerShown: false,
         }}
       />
       <Tab.Screen 

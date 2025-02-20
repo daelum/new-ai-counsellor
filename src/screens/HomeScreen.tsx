@@ -17,6 +17,7 @@ type TabParamList = {
   Counseling: undefined;
   Bible: undefined;
   Devotional: undefined;
+  DeepThought: undefined;
   Profile: undefined;
 };
 
@@ -74,6 +75,19 @@ const HomeScreen = () => {
           <Text style={styles.actionTitle}>Daily Devotional</Text>
           <Text style={styles.actionDescription}>
             Start your day with spiritual reflection and prayer
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.actionCard}
+          onPress={() => navigation.navigate('DeepThought')}
+        >
+          <View style={styles.actionIconContainer}>
+            <Ionicons name="bulb" size={24} color="#10a37f" />
+          </View>
+          <Text style={styles.actionTitle}>Deep Thought</Text>
+          <Text style={styles.actionDescription}>
+            Explore profound questions about faith, existence, and purpose
           </Text>
         </TouchableOpacity>
 

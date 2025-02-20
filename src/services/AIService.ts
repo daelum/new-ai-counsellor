@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { OPENAI_API_KEY } from '@env';
+import { OPENAI_API_KEY, DEEPSEEK_API_KEY } from '@env';
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
 import * as FileSystem from 'expo-file-system';
 import { Audio, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
@@ -67,7 +67,7 @@ class AIService {
     this.conversationHistory = [
       {
         role: "system",
-        content: `You are a trained counselor. Your name is Solomon. You're also an expert in the NIV Bible. When somebody talks to you or asks you questions, you should respond as a trained cognitive behavioural therapist counselor providing guidance and thoughtful insights. Each time somebody responds, when appropriate, you should provide a reference from the NIV Bible. You should also provide a verse from the Bible that is relevant to the conversation. You should always ask a follow up question to the user, a question that will help them further explore their own thoughts and feelings. Don't sign your responses. If you are unable to provide the help the user is looking for, do not say 'I'm Really sorry that you're feeling this way, but I'm unable to provide the help that you need. It's really important to talk things over with someone who can, though, such as a mental health professional or a trusted person in your life.", instead provide a bible reference that may comfort them then ask them more about their situation.
+        content: `You are a trained counselor. Your name is Solomon. You're also an expert in the NIV Bible. When somebody talks to you or asks you questions, you should respond as a trained cognitive behavioural therapist counselor providing guidance and thoughtful insights. Each time somebody responds, when appropriate, you should provide a reference from the NIV Bible. You should also provide a verse from the Bible that is relevant to the conversation. You should always ask a follow up question to the user, a question that will help them further explore their own thoughts and feelings. Don't sign your responses. If you are unable to provide the help the user is looking for, do not say 'I'm Really sorry that you're feeling this way, but I'm unable to provide the help that you need. It's really important to talk things over with someone who can, though, such as a mental health professional or a trusted person in your life.', instead provide a bible reference that may comfort them then ask them more about their situation.
 
 Additional guidelines for your responses:
 1. Always maintain a compassionate and understanding tone
@@ -862,6 +862,90 @@ Additional guidelines for your responses:
       await AsyncStorage.removeItem(AIService.DEVOTIONAL_CACHE_KEY);
     } catch (error) {
       console.error('Error clearing devotional cache:', error);
+    }
+  }
+
+  public async getDeepThoughtResponse(text: string, onStream?: (chunk: { answer?: string; reasoning?: string[] }) => void): Promise<{ answer: string; reasoning: string[] }> {
+    try {
+      console.log('Making Deepseek API request...');
+      
+      if (!DEEPSEEK_API_KEY) {
+        throw new Error('Deepseek API key is not configured');
+      }
+
+      const requestBody = {
+        model: 'deepseek-reasoner',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are Solomon, a wise philosopher and theologian. For each response, provide your reasoning within <think> tags and your final answer within <answer> tags.'
+          },
+          {
+            role: 'user',
+            content: `Please analyze this question: ${text}`
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 2000,
+        stream: false
+      };
+
+      console.log('Request body:', JSON.stringify(requestBody));
+
+      const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API error response:', errorText);
+        throw new Error(`API request failed with status ${response.status}: ${errorText}`);
+      }
+
+      const responseText = await response.text();
+      console.log('Raw response text:', responseText);
+
+      if (!responseText) {
+        throw new Error('Empty response received from API');
+      }
+
+      const responseData = JSON.parse(responseText);
+      const content = responseData.choices?.[0]?.message?.content;
+
+      if (!content) {
+        throw new Error('Invalid response format from API');
+      }
+
+      // Extract reasoning and answer from tags
+      const thinkMatch = content.match(/<think>(.*?)<\/think>/s);
+      const answerMatch = content.match(/<answer>(.*?)<\/answer>/s);
+
+      const reasoning = thinkMatch ? 
+        thinkMatch[1].trim().split('\n').map((line: string) => line.trim()).filter((line: string) => line) : 
+        [];
+      const answer = answerMatch ? answerMatch[1].trim() : content;
+
+      return {
+        answer,
+        reasoning
+      };
+
+    } catch (error) {
+      console.error('Error in getDeepThoughtResponse:', error);
+      if (error instanceof Error) {
+        console.error('Error details:', {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        });
+      }
+      throw new Error('Failed to get response. Please try again.');
     }
   }
 }
