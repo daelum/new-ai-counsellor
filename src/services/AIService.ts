@@ -99,23 +99,34 @@ Additional guidelines for your responses:
   }
 
   private async monitorAudioLevel(): Promise<{ transcription: string; aiResponse: string } | null> {
-    const SILENCE_THRESHOLD = -50; // dB
-    const SILENCE_DURATION = 1500; // 1.5 seconds of silence before stopping
+    const SILENCE_THRESHOLD = -40; // Adjusted from -50 to -40 for better sensitivity
+    const SILENCE_DURATION = 2000; // Increased from 1500 to 2000ms for better detection
+    const MIN_RECORDING_DURATION = 1000; // Minimum 1 second recording
+    const recordingStartTime = Date.now();
 
     while (this.recordingStatus.isRecording && this.recording) {
       try {
         const status = await this.recording.getStatusAsync();
         if (status.isRecording) {
           const metering = status.metering || -160;
-          console.log('Current audio level:', metering);
+          console.log('Current audio level:', metering, 'Time:', Date.now() - recordingStartTime);
+
+          const recordingDuration = Date.now() - recordingStartTime;
+          if (recordingDuration < MIN_RECORDING_DURATION) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            continue;
+          }
 
           if (metering < SILENCE_THRESHOLD) {
             if (this.recordingStatus.silenceStart === 0) {
               this.recordingStatus.silenceStart = Date.now();
-            } else if (Date.now() - this.recordingStatus.silenceStart > SILENCE_DURATION) {
-              console.log('Silence detected, stopping recording...');
-              // Don't call stopRecording here, just stop the actual recording
-              if (this.recording) {
+              console.log('Silence started at:', this.recordingStatus.silenceStart);
+            } else {
+              const silenceDuration = Date.now() - this.recordingStatus.silenceStart;
+              console.log('Silence duration:', silenceDuration);
+              
+              if (silenceDuration > SILENCE_DURATION) {
+                console.log('Silence threshold reached, stopping recording...');
                 const transcription = await this.stopVoiceRecording(this.recording);
                 this.recording = null;
                 
@@ -126,11 +137,14 @@ Additional guidelines for your responses:
                   this.emitRecordingState(false);
                   return { transcription, aiResponse };
                 }
+                break;
               }
-              break;
             }
           } else {
-            this.recordingStatus.silenceStart = 0;
+            if (this.recordingStatus.silenceStart !== 0) {
+              console.log('Speech detected, resetting silence counter');
+              this.recordingStatus.silenceStart = 0;
+            }
           }
           
           this.recordingStatus.lastVolume = metering;
@@ -145,7 +159,7 @@ Additional guidelines for your responses:
     return null;
   }
 
-  public async startVoiceRecording(): Promise<{ transcription: string; aiResponse: string } | null> {
+  public async startVoiceRecording(): Promise<void> {
     try {
       console.log('Requesting audio recording permissions...');
       const permission = await Audio.requestPermissionsAsync();
@@ -185,12 +199,12 @@ Additional guidelines for your responses:
       this.recordingStatus = {
         isRecording: true,
         lastVolume: 0,
-        silenceStart: Date.now()
+        silenceStart: 0
       };
 
       await this.recording.startAsync();
+      console.log('Recording started successfully');
       this.emitRecordingState(true);
-      return await this.monitorAudioLevel();
     } catch (error) {
       console.error('Failed to start recording:', error);
       this.emitRecordingState(false);
@@ -199,30 +213,53 @@ Additional guidelines for your responses:
   }
 
   public async stopRecording(): Promise<{ transcription: string; aiResponse: string } | null> {
-    if (!this.recording || !this.recordingStatus.isRecording) return null;
+    if (!this.recording || !this.recordingStatus.isRecording) {
+      console.log('No active recording to stop');
+      return null;
+    }
 
+    console.log('Stopping recording...');
+    
     try {
+      // First stop the recording and get transcription
       const transcription = await this.stopVoiceRecording(this.recording);
+      console.log('Got transcription:', transcription);
+      
+      // Clear recording immediately
       this.recording = null;
       
-      if (transcription) {
-        console.log('Transcribed text:', transcription);
-        const aiResponse = await this.getCounselingResponse(transcription, true);
-        
-        // Only emit recording state change after we have the response
+      if (!transcription) {
+        console.log('No transcription received');
         this.recordingStatus.isRecording = false;
         this.emitRecordingState(false);
-        
-        return { transcription, aiResponse };
+        return null;
+      }
+
+      // Get AI response
+      console.log('Getting AI response for transcription...');
+      const aiResponse = await this.getCounselingResponse(transcription, true);
+      console.log('Got AI response:', aiResponse);
+      
+      // Update recording state last
+      this.recordingStatus.isRecording = false;
+      this.emitRecordingState(false);
+      
+      return { transcription, aiResponse };
+    } catch (error) {
+      console.error('Error in stopRecording:', error);
+      if (error instanceof Error) {
+        console.error('Error details:', {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        });
       }
       
+      // Ensure we clean up on error
+      this.recording = null;
       this.recordingStatus.isRecording = false;
       this.emitRecordingState(false);
-      return null;
-    } catch (error) {
-      console.error('Error stopping recording:', error);
-      this.recordingStatus.isRecording = false;
-      this.emitRecordingState(false);
+      
       throw error;
     }
   }
@@ -278,11 +315,25 @@ Additional guidelines for your responses:
 
   public async generateVoiceResponse(text: string): Promise<void> {
     try {
+      // Ensure proper cleanup of previous sound
       if (this.sound) {
-        await this.sound.unloadAsync();
+        try {
+          await this.sound.stopAsync();
+          await this.sound.unloadAsync();
+          this.sound = null;
+        } catch (error) {
+          console.error('Error cleaning up previous sound:', error);
+        }
       }
 
-      // Make the text-to-speech request using fetch
+      // Set up audio mode first
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+        shouldDuckAndroid: true,
+      });
+
+      console.log('Making TTS request...');
       const response = await fetch('https://api.openai.com/v1/audio/speech', {
         method: 'POST',
         headers: {
@@ -300,9 +351,8 @@ Additional guidelines for your responses:
         throw new Error(`OpenAI API error: ${response.status}`);
       }
 
-      // Get the audio data as a blob
+      console.log('Got TTS response, processing audio...');
       const audioData = await response.arrayBuffer();
-      // Convert to base64
       const base64Audio = this.arrayBufferToBase64(audioData);
       const audioUri = `${FileSystem.documentDirectory}response.mp3`;
       
@@ -310,11 +360,34 @@ Additional guidelines for your responses:
         encoding: FileSystem.EncodingType.Base64,
       });
 
+      console.log('Loading audio...');
       this.sound = new Audio.Sound();
       await this.sound.loadAsync({ uri: audioUri });
-      await this.sound.playAsync();
+      
+      // Add event listener for playback status
+      this.sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded) {
+          console.log('Playback status:', {
+            positionMillis: status.positionMillis,
+            durationMillis: status.durationMillis,
+            isPlaying: status.isPlaying,
+            didJustFinish: status.didJustFinish
+          });
+        }
+      });
+
+      console.log('Starting playback...');
+      const playbackStatus = await this.sound.playAsync();
+      console.log('Initial playback status:', playbackStatus);
     } catch (error) {
       console.error('Failed to generate or play voice response:', error);
+      if (error instanceof Error) {
+        console.error('Error details:', {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        });
+      }
       throw error;
     }
   }

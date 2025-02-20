@@ -431,6 +431,7 @@ class FirebaseService {
         userId: auth.currentUser.uid,
       };
 
+      console.log('Adding message to Firestore:', messageData);
       const docRef = await addDoc(collection(db, 'messages'), messageData);
       
       // Update conversation's lastUpdated and messageCount
@@ -440,6 +441,7 @@ class FirebaseService {
         messageCount: increment(1),
       });
 
+      console.log('Message added successfully:', docRef.id);
       return {
         id: docRef.id,
         ...messageData,

@@ -51,87 +51,9 @@ const CounselingScreen = () => {
   // Audio setup and recording state management
   useEffect(() => {
     setupAudio();
-    const unsubscribe = aiService.onRecordingStateChange(async (isRecording) => {
+    const unsubscribe = aiService.onRecordingStateChange((isRecording) => {
       console.log('Recording state changed:', isRecording);
       setIsRecording(isRecording);
-      
-      if (!isRecording) {
-        // Store the conversation context when recording stops
-        const conversationAtSend = currentConversation;
-        const conversationIdAtSend = activeConversationRef.current;
-
-        try {
-          setIsLoading(true);
-          console.log('Stopping recording and waiting for result...');
-          const result = await aiService.stopRecording();
-          console.log('Got recording result:', result);
-          
-          if (result) {
-            const { transcription, aiResponse } = result;
-            console.log('Adding messages to chat:', { transcription, aiResponse });
-            
-            const userMessage: Message = {
-              id: Date.now().toString(),
-              text: transcription.trim(),
-              sender: 'user',
-              timestamp: new Date(),
-            };
-
-            const aiMessage: Message = {
-              id: (Date.now() + 1).toString(),
-              text: aiResponse,
-              sender: 'ai',
-              timestamp: new Date(),
-            };
-
-            // Only update UI if we're still in the same conversation
-            if (activeConversationRef.current === conversationIdAtSend) {
-              setMessages(prev => [...prev, userMessage, aiMessage]);
-            }
-
-            // Save messages to the original conversation
-            if (conversationAtSend) {
-              await FirebaseService.addMessage(
-                conversationAtSend.id,
-                userMessage.text,
-                'user',
-                auth.currentUser?.uid || ''
-              );
-              await FirebaseService.addMessage(
-                conversationAtSend.id,
-                aiMessage.text,
-                'assistant',
-                auth.currentUser?.uid || ''
-              );
-            }
-          }
-        } catch (error) {
-          console.error('Error handling recording stop:', error);
-          const errorMessage: Message = {
-            id: Date.now().toString(),
-            text: "I apologize, but I'm experiencing some difficulty processing your message. Please try again.",
-            sender: 'ai',
-            timestamp: new Date(),
-          };
-
-          // Only update UI if we're still in the same conversation
-          if (activeConversationRef.current === conversationIdAtSend) {
-            setMessages(prev => [...prev, errorMessage]);
-          }
-
-          // Save error message to the original conversation
-          if (conversationAtSend) {
-            await FirebaseService.addMessage(
-              conversationAtSend.id,
-              errorMessage.text,
-              'assistant',
-              auth.currentUser?.uid || ''
-            );
-          }
-        } finally {
-          setIsLoading(false);
-        }
-      }
     });
 
     return () => {
@@ -139,7 +61,7 @@ const CounselingScreen = () => {
       aiService.cancelRecording();
       aiService.stopAndUnloadSound();
     };
-  }, []);
+  }, [currentConversation]);
 
   // Initial welcome message
   useEffect(() => {
@@ -170,13 +92,31 @@ const CounselingScreen = () => {
 
   const setupAudio = async () => {
     try {
+      console.log('Setting up audio...');
       await Audio.requestPermissionsAsync();
+      
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
       });
+      
+      console.log('Audio setup complete');
     } catch (error) {
       console.error('Error setting up audio:', error);
+      if (error instanceof Error) {
+        console.error('Error details:', {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        });
+      }
+      Alert.alert(
+        'Audio Setup Error',
+        'Failed to set up audio. Please check your device settings and permissions.'
+      );
     }
   };
 
@@ -219,121 +159,202 @@ const CounselingScreen = () => {
   };
 
   const handleMessage = async (text: string, useVoice: boolean = false) => {
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      text: text.trim(),
-      sender: 'user',
-      timestamp: new Date(),
-    };
+    if (!auth.currentUser?.uid) {
+      console.error('No authenticated user');
+      return;
+    }
 
-    // Store the conversation ID at the time the message is sent
-    const conversationAtSend = currentConversation;
-    const conversationIdAtSend = activeConversationRef.current;
-
-    setMessages(prev => [...prev, userMessage]);
-    setInputText('');
     setIsLoading(true);
-
-    // Save user message
-    await saveMessage(userMessage, 'user');
-
     try {
-      const aiResponse = await aiService.getCounselingResponse(userMessage.text, useVoice);
-      
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        text: aiResponse,
+      // Ensure we have a conversation
+      let conversation = currentConversation;
+      if (!conversation) {
+        conversation = await createNewConversation();
+        if (!conversation) {
+          throw new Error('Failed to create conversation');
+        }
+        setCurrentConversation(conversation);
+        activeConversationRef.current = conversation.id;
+      }
+
+      // Immediately save and display user message
+      const userMessageId = Date.now().toString();
+      const tempUserMessage: Message = {
+        id: userMessageId,
+        text: text,
+        sender: 'user',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, tempUserMessage]);
+      setInputText('');
+
+      // Save user message to Firestore
+      const savedUserMessage = await FirebaseService.addMessage(
+        conversation.id,
+        text,
+        'user',
+        auth.currentUser.uid
+      );
+
+      // Update message with correct ID
+      setMessages(prev => 
+        prev.map(msg => 
+          msg.id === userMessageId ? { ...msg, id: savedUserMessage.id } : msg
+        )
+      );
+
+      // Get AI response
+      const aiResponseText = await aiService.getCounselingResponse(text, useVoice);
+
+      // Immediately display AI response
+      const tempAiMessageId = Date.now().toString();
+      const tempAiMessage: Message = {
+        id: tempAiMessageId,
+        text: aiResponseText,
         sender: 'ai',
         timestamp: new Date(),
       };
+      setMessages(prev => [...prev, tempAiMessage]);
 
-      // Only update the messages in the UI if we're still in the same conversation
-      if (activeConversationRef.current === conversationIdAtSend) {
-        setMessages(prev => [...prev, aiMessage]);
-      }
-      
-      // Save AI message to the original conversation
-      if (conversationAtSend) {
-        await FirebaseService.addMessage(
-          conversationAtSend.id,
-          aiMessage.text,
-          'assistant',
-          auth.currentUser?.uid || ''
-        );
-      }
+      // Save AI response to Firestore
+      const savedAiMessage = await FirebaseService.addMessage(
+        conversation.id,
+        aiResponseText,
+        'assistant',
+        auth.currentUser.uid
+      );
+
+      // Update AI message with correct ID
+      setMessages(prev => 
+        prev.map(msg => 
+          msg.id === tempAiMessageId ? { ...msg, id: savedAiMessage.id } : msg
+        )
+      );
+
     } catch (error) {
+      console.error('Error in handleMessage:', error);
       const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        text: "I apologize, but I'm experiencing some difficulty. Please try again.",
+        id: Date.now().toString(),
+        text: "I apologize, but I'm having trouble processing your message. Please try again.",
         sender: 'ai',
         timestamp: new Date(),
       };
-
-      // Only update the messages in the UI if we're still in the same conversation
-      if (activeConversationRef.current === conversationIdAtSend) {
-        setMessages(prev => [...prev, errorMessage]);
-      }
-      
-      // Save error message to the original conversation
-      if (conversationAtSend) {
-        await FirebaseService.addMessage(
-          conversationAtSend.id,
-          errorMessage.text,
-          'assistant',
-          auth.currentUser?.uid || ''
-        );
-      }
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
-      setIsRecording(false);
     }
   };
 
   const toggleRecording = async () => {
-    if (isRecording) {
-      await aiService.cancelRecording();
-    } else {
-      // Store the conversation context when starting recording
-      const conversationAtSend = currentConversation;
-      const conversationIdAtSend = activeConversationRef.current;
+    if (!auth.currentUser?.uid) {
+      console.error('No authenticated user found');
+      return;
+    }
 
-      try {
-        // Create a new conversation if one doesn't exist
-        if (!conversationAtSend && auth.currentUser?.uid) {
-          const newConversation = await createNewConversation();
-          if (newConversation) {
-            setCurrentConversation(newConversation);
-            activeConversationRef.current = newConversation.id;
-          }
+    try {
+      if (isRecording) {
+        console.log('Stopping recording...');
+        setIsLoading(true);
+        
+        // Get the recording result
+        const result = await aiService.stopRecording();
+        console.log('Got recording result:', result);
+        
+        if (!result) {
+          console.error('No result from voice recording');
+          return;
         }
 
-        setIsLoading(true);
-        await aiService.startVoiceRecording();
-      } catch (error) {
-        console.error('Failed to start recording:', error);
-        const errorMessage: Message = {
-          id: Date.now().toString(),
-          text: "I apologize, but I'm experiencing some difficulty with voice recording. Please try again.",
+        const { transcription, aiResponse } = result;
+        
+        // Ensure we have a conversation
+        let conversation = currentConversation;
+        if (!conversation) {
+          console.log('Creating new conversation...');
+          conversation = await createNewConversation();
+          if (!conversation) {
+            throw new Error('Failed to create conversation');
+          }
+          console.log('Created new conversation:', conversation);
+        }
+
+        // Immediately display user's transcribed message
+        const userMessageId = Date.now().toString();
+        const userMessage: Message = {
+          id: userMessageId,
+          text: transcription.trim(),
+          sender: 'user',
+          timestamp: new Date(),
+        };
+        console.log('Adding user message to UI:', userMessage);
+        setMessages(prev => [...prev, userMessage]);
+
+        // Save transcribed message to Firestore
+        console.log('Saving user message to Firestore...');
+        const savedUserMessage = await FirebaseService.addMessage(
+          conversation.id,
+          transcription.trim(),
+          'user',
+          auth.currentUser.uid
+        );
+        console.log('Saved user message:', savedUserMessage);
+
+        // Update user message with correct ID
+        setMessages(prev => 
+          prev.map(msg => 
+            msg.id === userMessageId ? { ...msg, id: savedUserMessage.id } : msg
+          )
+        );
+
+        // Immediately display AI response
+        const aiMessageId = Date.now().toString();
+        const aiMessage: Message = {
+          id: aiMessageId,
+          text: aiResponse,
           sender: 'ai',
           timestamp: new Date(),
         };
+        console.log('Adding AI response to UI:', aiMessage);
+        setMessages(prev => [...prev, aiMessage]);
 
-        // Only update UI if we're still in the same conversation
-        if (activeConversationRef.current === conversationIdAtSend) {
-          setMessages(prev => [...prev, errorMessage]);
-        }
-        
-        // Save error message to the original conversation
-        if (conversationAtSend) {
-          await FirebaseService.addMessage(
-            conversationAtSend.id,
-            errorMessage.text,
-            'assistant',
-            auth.currentUser?.uid || ''
-          );
-        }
-        setIsLoading(false);
+        // Save AI response to Firestore
+        console.log('Saving AI response to Firestore...');
+        const savedAiMessage = await FirebaseService.addMessage(
+          conversation.id,
+          aiResponse,
+          'assistant',
+          auth.currentUser.uid
+        );
+        console.log('Saved AI response:', savedAiMessage);
+
+        // Update AI message with correct ID
+        setMessages(prev => 
+          prev.map(msg => 
+            msg.id === aiMessageId ? { ...msg, id: savedAiMessage.id } : msg
+          )
+        );
+      } else {
+        console.log('Starting recording...');
+        await aiService.startVoiceRecording();
       }
+    } catch (error) {
+      console.error('Error in toggleRecording:', error);
+      if (error instanceof Error) {
+        console.error('Error details:', {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        });
+      }
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        text: "Error in voice chat flow: " + (error instanceof Error ? error.message : 'Unknown error'),
+        sender: 'ai',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
