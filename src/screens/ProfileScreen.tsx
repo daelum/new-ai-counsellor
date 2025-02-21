@@ -20,6 +20,8 @@ const ProfileScreen = () => {
   const [editedDisplayName, setEditedDisplayName] = useState('');
   const [editedBio, setEditedBio] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [showClearConfirmation, setShowClearConfirmation] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
   const notificationService = NotificationService.getInstance();
   const { user, logout, updateProfile } = useUser();
@@ -156,6 +158,22 @@ const ProfileScreen = () => {
       Alert.alert('Error', 'Failed to update profile. Please try again.');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleClearMemory = async () => {
+    if (!user) return;
+    
+    setIsClearing(true);
+    try {
+      await FirebaseService.clearUserData(user.id);
+      setShowClearConfirmation(false);
+      Alert.alert('Success', 'All your data has been cleared successfully.');
+    } catch (error) {
+      console.error('Error clearing user data:', error);
+      Alert.alert('Error', 'Failed to clear data. Please try again.');
+    } finally {
+      setIsClearing(false);
     }
   };
 
@@ -316,8 +334,11 @@ const ProfileScreen = () => {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Account Information</Text>
         <View style={styles.settingCard}>
+          <View style={styles.settingHeader}>
+            <Ionicons name="person-outline" size={24} color="#10a37f" />
+            <Text style={styles.settingTitle}>Account Information</Text>
+          </View>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Email</Text>
             <Text style={styles.infoValue}>{user?.email}</Text>
@@ -332,9 +353,6 @@ const ProfileScreen = () => {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Notifications</Text>
-        
-        {/* Daily Devotional Settings */}
         <View style={[styles.settingCard, styles.marginBottom]}>
           <View style={styles.settingHeader}>
             <Ionicons name="notifications-outline" size={24} color="#10a37f" />
@@ -344,7 +362,6 @@ const ProfileScreen = () => {
             Receive a daily notification to remind you to read your devotional and
             spend time in prayer.
           </Text>
-
           <View style={styles.settingRow}>
             <Text style={styles.settingLabel}>Enable Notifications</Text>
             <Switch
@@ -353,7 +370,6 @@ const ProfileScreen = () => {
               color="#10a37f"
             />
           </View>
-
           <View style={[styles.settingRow, !devotionalEnabled && styles.disabled]}>
             <Text style={styles.settingLabel}>Reminder Time</Text>
             {renderTimePicker(
@@ -367,7 +383,6 @@ const ProfileScreen = () => {
           </View>
         </View>
 
-        {/* Daily Wisdom Settings */}
         <View style={styles.settingCard}>
           <View style={styles.settingHeader}>
             <Ionicons name="book-outline" size={24} color="#10a37f" />
@@ -376,7 +391,6 @@ const ProfileScreen = () => {
           <Text style={styles.settingDescription}>
             Receive a daily Bible verse about wisdom, love, and faith to inspire your day.
           </Text>
-
           <View style={styles.settingRow}>
             <Text style={styles.settingLabel}>Enable Notifications</Text>
             <Switch
@@ -385,7 +399,6 @@ const ProfileScreen = () => {
               color="#10a37f"
             />
           </View>
-
           <View style={[styles.settingRow, !wisdomEnabled && styles.disabled]}>
             <Text style={styles.settingLabel}>Reminder Time</Text>
             {renderTimePicker(
@@ -401,7 +414,6 @@ const ProfileScreen = () => {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>About</Text>
         <View style={styles.settingCard}>
           <View style={styles.settingHeader}>
             <Ionicons name="information-circle-outline" size={24} color="#10a37f" />
@@ -411,6 +423,25 @@ const ProfileScreen = () => {
             <Text style={styles.infoLabel}>Version</Text>
             <Text style={styles.infoValue}>1.0.0</Text>
           </View>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.settingCard}>
+          <View style={styles.settingHeader}>
+            <Ionicons name="trash-outline" size={24} color="#e74c3c" />
+            <Text style={styles.settingTitle}>Clear Memory</Text>
+          </View>
+          <Text style={styles.settingDescription}>
+            Clear all your conversations, prayers, and other data. This action cannot be undone.
+          </Text>
+          <TouchableOpacity
+            style={[styles.clearButton, isClearing && styles.clearButtonDisabled]}
+            onPress={() => setShowClearConfirmation(true)}
+            disabled={isClearing}
+          >
+            <Text style={styles.clearButtonText}>Clear All Data</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -430,6 +461,37 @@ const ProfileScreen = () => {
           }
         />
       </View>
+
+      <Overlay
+        isVisible={showClearConfirmation}
+        onBackdropPress={() => !isClearing && setShowClearConfirmation(false)}
+        overlayStyle={styles.overlay}
+      >
+        <View style={styles.overlayContent}>
+          <Text style={styles.overlayTitle}>Clear All Data?</Text>
+          <Text style={styles.overlayDescription}>
+            This will permanently delete all your conversations, prayers, and other data. This action cannot be undone.
+          </Text>
+          <View style={styles.overlayButtons}>
+            <TouchableOpacity
+              style={[styles.overlayButton, styles.cancelButton]}
+              onPress={() => setShowClearConfirmation(false)}
+              disabled={isClearing}
+            >
+              <Text style={styles.overlayButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.overlayButton, styles.confirmButton, isClearing && styles.clearButtonDisabled]}
+              onPress={handleClearMemory}
+              disabled={isClearing}
+            >
+              <Text style={[styles.overlayButtonText, styles.confirmButtonText]}>
+                {isClearing ? 'Clearing...' : 'Clear All'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Overlay>
     </ScrollView>
   );
 };
@@ -443,23 +505,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
     paddingTop: 30,
+    backgroundColor: '#444654',
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
   },
   avatarContainer: {
     marginBottom: 16,
   },
-  welcomeText: {
-    fontSize: 24,
-    color: '#ffffff',
-    fontWeight: 'bold',
-  },
   section: {
     padding: 16,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#ffffff',
-    marginBottom: 16,
+    paddingTop: 8,
+    paddingBottom: 0,
   },
   settingCard: {
     backgroundColor: '#444654',
@@ -500,7 +556,6 @@ const styles = StyleSheet.create({
   },
   timePickerWrapper: {
     alignItems: 'flex-end',
-    position: 'relative',
   },
   inlinePickerContainer: {
     position: 'absolute',
@@ -551,6 +606,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#343541',
   },
   infoLabel: {
     fontSize: 16,
@@ -560,15 +617,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666980',
   },
-  loadingText: {
-    color: '#ffffff',
-    textAlign: 'center',
-    marginTop: 20,
-  },
   footer: {
-    padding: 20,
-    paddingBottom: 40,
-    marginTop: 20,
+    padding: 16,
+    paddingBottom: 32,
   },
   logoutButton: {
     backgroundColor: '#dc3545',
@@ -604,7 +655,7 @@ const styles = StyleSheet.create({
     marginTop: 15,
   },
   input: {
-    backgroundColor: '#444654',
+    backgroundColor: '#343541',
     borderRadius: 8,
     padding: 15,
     marginBottom: 10,
@@ -623,6 +674,74 @@ const styles = StyleSheet.create({
   editButtonContainer: {
     flex: 1,
     marginHorizontal: 5,
+  },
+  clearButton: {
+    backgroundColor: '#e74c3c',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
+    alignItems: 'center',
+  },
+  clearButtonDisabled: {
+    opacity: 0.6,
+  },
+  clearButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  overlay: {
+    backgroundColor: '#343541',
+    borderRadius: 12,
+    padding: 20,
+    width: '90%',
+    maxWidth: 400,
+  },
+  overlayContent: {
+    alignItems: 'center',
+  },
+  overlayTitle: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  overlayDescription: {
+    color: '#666980',
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  overlayButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  overlayButton: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginHorizontal: 8,
+  },
+  cancelButton: {
+    backgroundColor: '#444654',
+  },
+  confirmButton: {
+    backgroundColor: '#e74c3c',
+  },
+  overlayButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  confirmButtonText: {
+    color: '#ffffff',
+  },
+  loadingText: {
+    color: '#ffffff',
+    textAlign: 'center',
+    marginTop: 20,
   },
 });
 

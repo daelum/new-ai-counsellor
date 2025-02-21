@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   Alert,
   Modal,
+  Share,
 } from 'react-native';
 import { Text, Input } from '@rneui/themed';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,6 +25,43 @@ interface Message {
   timestamp: Date;
   reasoning?: string[];
 }
+
+const thinkingMessages = [
+  "Consulting the burning bush... 🔥",
+  "Walking around Jericho... (6 more laps to go) 🚶‍♂️",
+  "Checking if the whale has any messages from Jonah... 🐋",
+  "Gathering manna for thought... 🍞",
+  "Parting the sea of knowledge... 🌊",
+  "Climbing Mount Sinai for better reception... ⛰️",
+  "Counting stars like Abraham... ✨",
+  "Tuning David's harp... 🎵",
+  "Consulting Solomon's wisdom... 👑",
+  "Building an ark of understanding... 🚢",
+  "Turning water into divine insight... 🍷",
+  "Preparing a feast of knowledge... 🍽️",
+  "Polishing the armor of God... ⚔️",
+  "Checking the Good Book... 📖",
+  "Loading divine wisdom... 🕊️"
+];
+
+const ThinkingIndicator = () => {
+  const [messageIndex, setMessageIndex] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setMessageIndex((prev) => (prev + 1) % thinkingMessages.length);
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <View style={styles.thinkingContainer}>
+      <Text style={styles.thinkingText}>{thinkingMessages[messageIndex]}</Text>
+      <ActivityIndicator size="large" color="#10a37f" style={styles.thinkingSpinner} />
+    </View>
+  );
+};
 
 const DeepThoughtScreen = () => {
   const { user } = useUser();
@@ -98,9 +136,12 @@ const DeepThoughtScreen = () => {
 
     setIsLoading(true);
     try {
+      console.log('Starting message handling for:', text);
+      
       // Ensure we have a conversation
       let conversation = currentConversation;
       if (!conversation) {
+        console.log('Creating new conversation...');
         conversation = await createNewConversation();
         if (!conversation) {
           throw new Error('Failed to create conversation');
@@ -115,52 +156,34 @@ const DeepThoughtScreen = () => {
         sender: 'user',
         timestamp: new Date(),
       };
+      console.log('Adding user message:', userMessage);
       setMessages(prev => [...prev, userMessage]);
       setInputText('');
       await saveMessage(userMessage, 'user');
 
-      // Create a placeholder AI message
-      const aiMessageId = (Date.now() + 1).toString();
-      const aiMessage: Message = {
-        id: aiMessageId,
-        text: 'Thinking...',
-        sender: 'ai',
-        timestamp: new Date(),
-        reasoning: [],
-      };
-      setMessages(prev => [...prev, aiMessage]);
-
       // Get AI response
+      console.log('Getting AI response...');
       const aiService = AIService.getInstance();
       const response = await aiService.getDeepThoughtResponse(text);
+      console.log('Received AI response:', response);
 
-      // Update the message with the response
-      setMessages(prev => {
-        const messageIndex = prev.findIndex(m => m.id === aiMessageId);
-        if (messageIndex === -1) return prev;
-
-        const updatedMessages = [...prev];
-        updatedMessages[messageIndex] = {
-          ...updatedMessages[messageIndex],
-          text: response.answer,
-          reasoning: response.reasoning,
-        };
-        return updatedMessages;
-      });
-
-      // Save the final message
-      await saveMessage({
-        id: aiMessageId,
+      // Add the AI response
+      const aiMessage: Message = {
+        id: Date.now().toString(),
         text: response.answer,
         sender: 'ai',
         timestamp: new Date(),
         reasoning: response.reasoning,
-      }, 'assistant');
+      };
+      console.log('Adding AI message:', aiMessage);
+      setMessages(prev => [...prev, aiMessage]);
+
+      // Save the final message
+      await saveMessage(aiMessage, 'assistant');
 
     } catch (error) {
       console.error('Error in handleMessage:', error);
       Alert.alert('Error', 'Failed to process your message. Please try again.');
-      setMessages(prev => prev.filter(m => m.sender !== 'ai' || m.text !== 'Thinking...'));
     } finally {
       setIsLoading(false);
     }
@@ -169,6 +192,45 @@ const DeepThoughtScreen = () => {
   const handleSend = () => {
     if (!inputText.trim()) return;
     handleMessage(inputText.trim());
+  };
+
+  const handleShare = async () => {
+    try {
+      // Filter out the welcome message
+      const conversationMessages = messages.filter(m => m.id !== 'welcome');
+      
+      if (conversationMessages.length === 0) {
+        Alert.alert('Nothing to Share', 'Start a conversation first to share insights!');
+        return;
+      }
+
+      // Format the conversation
+      const formattedConversation = conversationMessages.map(message => {
+        if (message.sender === 'user') {
+          return `Question:\n${message.text}\n\n`;
+        } else {
+          let formattedMessage = `Answer:\n${message.text}\n\n`;
+          if (message.reasoning && message.reasoning.length > 0) {
+            formattedMessage += 'Reasoning Process:\n';
+            message.reasoning.forEach((step, index) => {
+              formattedMessage += `${index + 1}. ${step}\n`;
+            });
+            formattedMessage += '\n';
+          }
+          return formattedMessage;
+        }
+      }).join('');
+
+      const shareMessage = `Deep Thought Conversation\n\n${formattedConversation}\nShared from Solomon App`;
+
+      await Share.share({
+        message: shareMessage,
+        title: 'Deep Thought Conversation',
+      });
+    } catch (error) {
+      console.error('Error sharing conversation:', error);
+      Alert.alert('Error', 'Failed to share the conversation. Please try again.');
+    }
   };
 
   const renderMessage = (message: Message) => (
@@ -180,16 +242,73 @@ const DeepThoughtScreen = () => {
       ]}
     >
       <View style={styles.messageContent}>
-        <Text style={[
-          styles.messageText,
-          message.sender === 'user' ? styles.userMessageText : styles.aiMessageText
-        ]}>
-          {message.text}
-        </Text>
+        {message.text ? (
+          message.sender === 'user' ? (
+            <Text style={[styles.messageText, styles.userMessageText]}>
+              {message.text}
+            </Text>
+          ) : (
+            <View>
+              {message.text.split('\n\n').map((section, index) => {
+                if (section.startsWith('Final Answer:')) {
+                  return (
+                    <View key={index} style={styles.section}>
+                      <Text style={styles.sectionTitle}>Final Answer</Text>
+                      <Text style={[styles.messageText, styles.aiMessageText]}>
+                        {section.replace('Final Answer:', '').trim()}
+                      </Text>
+                    </View>
+                  );
+                } else if (section.startsWith('Biblical Foundation:')) {
+                  const content = section.replace('Biblical Foundation:', '').trim();
+                  
+                  // Split into verse blocks (each containing reference, text, and explanation)
+                  const verseBlocks = content.split(/(?=\n[A-Za-z]+\s+\d+:\d+)/).filter(Boolean);
+                  
+                  return (
+                    <View key={index} style={styles.section}>
+                      <Text style={styles.sectionTitle}>Biblical Foundation</Text>
+                      {verseBlocks.map((block, verseIndex) => {
+                        // Split the block into lines
+                        const lines = block.trim().split('\n');
+                        
+                        // First line contains verse reference and text
+                        const verseContent = lines[0];
+                        // Remaining lines form the explanation
+                        const explanation = lines.slice(1).join('\n').trim();
+                        
+                        return (
+                          <View key={verseIndex} style={styles.verseContainer}>
+                            <Text style={[styles.messageText, styles.aiMessageText, styles.verseText]}>
+                              {verseContent}
+                            </Text>
+                            {explanation && (
+                              <Text style={[styles.messageText, styles.aiMessageText, styles.verseExplanation]}>
+                                {explanation}
+                              </Text>
+                            )}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  );
+                } else {
+                  return (
+                    <Text key={index} style={[styles.messageText, styles.aiMessageText]}>
+                      {section}
+                    </Text>
+                  );
+                }
+              })}
+            </View>
+          )
+        ) : (
+          <Text style={styles.errorText}>Error: Message text is missing</Text>
+        )}
         
         {message.reasoning && message.reasoning.length > 0 && (
           <View style={styles.reasoningContainer}>
-            <Text style={styles.reasoningTitle}>Reasoning Process:</Text>
+            <Text style={styles.reasoningTitle}>Reasoning Process</Text>
             {message.reasoning.map((step, index) => (
               <View key={index} style={styles.reasoningStep}>
                 <Text style={styles.stepNumber}>{index + 1}.</Text>
@@ -206,6 +325,12 @@ const DeepThoughtScreen = () => {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Deep Thought</Text>
+        <TouchableOpacity 
+          style={styles.shareButton}
+          onPress={handleShare}
+        >
+          <Ionicons name="share-outline" size={24} color="#ffffff" />
+        </TouchableOpacity>
       </View>
 
       <ScrollView 
@@ -215,11 +340,7 @@ const DeepThoughtScreen = () => {
         onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
       >
         {messages.map(renderMessage)}
-        {isLoading && (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color="#10a37f" />
-          </View>
-        )}
+        {isLoading && <ThinkingIndicator />}
       </ScrollView>
 
       <View style={styles.inputWrapper}>
@@ -263,7 +384,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
     backgroundColor: '#202123',
@@ -274,6 +395,8 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#ffffff',
+    flex: 1,
+    textAlign: 'center',
   },
   messagesContainer: {
     flex: 1,
@@ -311,8 +434,8 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   reasoningContainer: {
-    marginTop: 12,
-    paddingTop: 12,
+    marginTop: 24,
+    paddingTop: 16,
     borderTopWidth: 1,
     borderTopColor: '#444654',
   },
@@ -338,10 +461,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     flex: 1,
     lineHeight: 20,
-  },
-  loadingContainer: {
-    padding: 20,
-    alignItems: 'center',
   },
   inputWrapper: {
     position: 'absolute',
@@ -390,6 +509,60 @@ const styles = StyleSheet.create({
     backgroundColor: '#343541',
     borderWidth: 1,
     borderColor: '#444654',
+  },
+  thinkingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    marginTop: 10,
+  },
+  thinkingText: {
+    fontSize: 16,
+    color: '#666980',
+    marginBottom: 15,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  thinkingSpinner: {
+    marginTop: 10,
+  },
+  shareButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'transparent',
+  },
+  errorText: {
+    color: '#ff4444',
+    fontStyle: 'italic',
+    fontSize: 14,
+  },
+  section: {
+    marginVertical: 20,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#444654',
+  },
+  sectionTitle: {
+    color: '#10a37f',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  verseContainer: {
+    marginBottom: 24,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#444654',
+  },
+  verseText: {
+    marginBottom: 12,
+    color: '#ffffff',
+    fontWeight: '500',
+  },
+  verseExplanation: {
+    color: '#666980',
+    fontSize: 15,
+    lineHeight: 22,
   },
 });
 

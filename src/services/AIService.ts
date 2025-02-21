@@ -86,7 +86,8 @@ FORMAT:
 7. [Final reasoning step, reaching a conclusion]
 
 
-Final Answer: [Your comprehensive answer]
+Final Answer:
+[Your comprehensive answer]
 
 
 Biblical Foundation:
@@ -104,11 +105,12 @@ Biblical Foundation:
 [Final synthesizing statement about how these verses work together]
 
 IMPORTANT FORMATTING:
-- Use TWO blank lines (double \\n\\n) after the Final Answer section
-- Use TWO blank lines before and after each Bible verse
+- Use TWO blank lines (\\n\\n) between major sections (after Final Answer, before and after Biblical Foundation)
+- Use ONE blank line (\\n) between Bible verses
 - Use TWO blank lines before the final synthesizing statement
-- The word "Biblical Foundation:" should be followed by TWO blank lines
-- Each section must be clearly separated by these double line breaks`
+- Each numbered reasoning step should be followed by ONE blank line
+- Keep paragraphs within sections separated by ONE blank line
+- Ensure consistent indentation and formatting throughout the response`
     }
   ];
 
@@ -931,7 +933,6 @@ Additional guidelines for your responses:
       console.log('\n=== Starting Deep Thought Request ===');
       console.log('User Query:', text);
 
-      // Add user's message to history
       this.deepThoughtHistory.push({
         role: "user",
         content: text
@@ -942,13 +943,19 @@ Additional guidelines for your responses:
 
       while (attempts < maxAttempts) {
         try {
+          console.log('Making API request, attempt:', attempts + 1);
           const response = await this.openai.chat.completions.create({
             model: "gpt-4-turbo-preview",
             messages: attempts === 0 ? this.deepThoughtHistory : [
               ...this.deepThoughtHistory,
               {
                 role: "system",
-                content: "Your last response did not follow the required format. Remember to:\n1. Start with numbered reasoning steps\n2. Include 'Final Answer:' section followed by TWO blank lines\n3. Include 'Biblical Foundation:' followed by TWO blank lines\n4. Leave TWO blank lines between each Bible verse\n5. Leave TWO blank lines before the final synthesizing statement\n\nUse double line breaks (\\n\\n) to create proper spacing."
+                content: `Your last response did not follow the required format. Please provide:
+1. Numbered reasoning steps (1., 2., etc.)
+2. A "Final Answer:" section
+3. A "Biblical Foundation:" section with Bible verses and references
+4. A final synthesizing statement
+5. Use single line breaks between sections`
               }
             ],
             temperature: 0.7,
@@ -956,71 +963,91 @@ Additional guidelines for your responses:
           });
 
           const content = response.choices[0]?.message?.content;
+          console.log('Received API response:', content);
+          
           if (!content) {
             throw new Error('No content received from OpenAI');
           }
 
-          // Process the content while preserving double line breaks
-          const lines = content
-            .split(/\n/)
-            .map(line => line.trim());
-
-          // Find the index where reasoning ends (first non-numbered line)
-          const answerIndex = lines.findIndex(line => 
-            line && !line.match(/^\d+[\.)]/));
-
-          const reasoning = lines
-            .slice(0, answerIndex > 0 ? answerIndex : 0)
-            .filter(line => line.match(/^\d+[\.)]/))
-            .map(line => line.replace(/^\d+[\.)]\s*/, '').trim());
-
-          // Preserve original line breaks in the answer
-          const answer = lines.slice(answerIndex > 0 ? answerIndex : lines.length - 1)
-            .join('\n');
-
-          // Validate response format
-          if (reasoning.length === 0 || 
-              !answer || 
-              !answer.toLowerCase().includes('final answer') ||
-              !answer.includes('\n\n')) {
-            if (attempts < maxAttempts - 1) {
-              attempts++;
-              continue;
-            }
-            throw new Error('Failed to extract reasoning or answer from response');
-          }
-
-          // Add assistant's response to history only if it's valid
           this.deepThoughtHistory.push({
             role: "assistant",
             content: content
           });
 
-          // Keep history manageable (system prompt + last 10 exchanges)
           if (this.deepThoughtHistory.length > 21) {
             this.deepThoughtHistory = [
-              this.deepThoughtHistory[0], // Keep system prompt
-              ...this.deepThoughtHistory.slice(-20) // Keep last 20 messages (10 exchanges)
+              this.deepThoughtHistory[0],
+              ...this.deepThoughtHistory.slice(-20)
             ];
           }
 
-          console.log('\n=== Final Response ===');
-          console.log('Reasoning steps:', reasoning.length);
-          console.log('Answer length:', answer.length);
+          // Extract reasoning steps
+          const reasoningSteps: string[] = [];
+          const lines = content.split('\n');
+          let currentStep = '';
+          let foundReasoning = false;
 
-          // If streaming callback is provided, send the final result
+          for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (!trimmedLine) continue;
+
+            const stepMatch = trimmedLine.match(/^\d+\.\s*(.+)/);
+            if (stepMatch) {
+              if (currentStep) reasoningSteps.push(currentStep);
+              currentStep = stepMatch[1];
+              foundReasoning = true;
+            } else if (foundReasoning && !trimmedLine.toLowerCase().includes('final answer:')) {
+              currentStep += ' ' + trimmedLine;
+            }
+          }
+          if (currentStep) reasoningSteps.push(currentStep);
+
+          console.log('Extracted reasoning steps:', reasoningSteps);
+
+          // Extract answer and biblical foundation
+          const finalAnswerMatch = content.match(/Final Answer:([\s\S]*?)(?:Biblical Foundation:|$)/i);
+          const biblicalFoundationMatch = content.match(/Biblical Foundation:([\s\S]*?)$/i);
+          
+          const finalAnswer = finalAnswerMatch ? finalAnswerMatch[1].trim() : '';
+          const biblicalFoundation = biblicalFoundationMatch ? biblicalFoundationMatch[1].trim() : '';
+          
+          let answer = '';
+          if (finalAnswer && biblicalFoundation) {
+            answer = `Final Answer:\n${finalAnswer}\n\nBiblical Foundation:\n${biblicalFoundation}`;
+          } else {
+            throw new Error('Failed to extract complete response with Biblical Foundation');
+          }
+
+          console.log('Formatted answer:', answer);
+
+          // Clean up the answer text
+          answer = answer
+            .replace(/\*\*/g, '') // Remove bold markdown
+            .replace(/\n{3,}/g, '\n\n') // Replace multiple line breaks with double
+            .trim();
+
+          if (reasoningSteps.length === 0) {
+            console.log('No reasoning steps found, retrying...');
+            if (attempts < maxAttempts - 1) {
+              attempts++;
+              continue;
+            }
+            throw new Error('Failed to extract reasoning steps');
+          }
+
           if (onStream) {
+            console.log('Calling onStream callback with response');
             onStream({
-              reasoning,
+              reasoning: reasoningSteps,
               answer
             });
           }
 
-          return { answer, reasoning };
+          console.log('Returning final response');
+          return { answer, reasoning: reasoningSteps };
         } catch (error) {
-          if (attempts === maxAttempts - 1) {
-            throw error;
-          }
+          console.error('Error in attempt:', error);
+          if (attempts === maxAttempts - 1) throw error;
           attempts++;
         }
       }

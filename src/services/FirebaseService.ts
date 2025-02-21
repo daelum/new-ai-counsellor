@@ -551,6 +551,93 @@ class FirebaseService {
       throw error;
     }
   }
+
+  async clearUserData(userId: string): Promise<void> {
+    try {
+      if (!auth.currentUser?.uid || auth.currentUser.uid !== userId) {
+        throw new Error('Unauthorized: You can only clear your own data');
+      }
+
+      console.log('Starting data deletion for user:', userId);
+
+      // Function to commit a batch when it gets close to the limit
+      const commitBatchIfNeeded = async (batch: any, operationCount: number): Promise<[any, number]> => {
+        if (operationCount >= 450) { // Safe limit, max is 500
+          console.log('Committing batch at operation count:', operationCount);
+          await batch.commit();
+          return [writeBatch(db), 0];
+        }
+        return [batch, operationCount];
+      };
+
+      let batch = writeBatch(db);
+      let operationCount = 0;
+
+      // Delete all conversations and their messages
+      console.log('Fetching conversations...');
+      const conversationsQuery = query(
+        collection(db, 'conversations'),
+        where('userId', '==', auth.currentUser.uid)  // Use auth.currentUser.uid instead of userId
+      );
+      const conversationsSnapshot = await getDocs(conversationsQuery);
+      console.log('Found conversations:', conversationsSnapshot.size);
+      
+      // Delete all messages from all conversations
+      for (const conversationDoc of conversationsSnapshot.docs) {
+        console.log('Processing conversation:', conversationDoc.id);
+        const messagesQuery = query(
+          collection(db, 'messages'),
+          where('conversationId', '==', conversationDoc.id)
+        );
+        const messagesSnapshot = await getDocs(messagesQuery);
+        console.log('Found messages for conversation:', messagesSnapshot.size);
+        
+        for (const messageDoc of messagesSnapshot.docs) {
+          batch.delete(messageDoc.ref);
+          operationCount++;
+          [batch, operationCount] = await commitBatchIfNeeded(batch, operationCount);
+        }
+
+        // Delete the conversation
+        batch.delete(conversationDoc.ref);
+        operationCount++;
+        [batch, operationCount] = await commitBatchIfNeeded(batch, operationCount);
+      }
+
+      // Delete all prayers
+      console.log('Fetching prayers...');
+      const prayersQuery = query(
+        collection(db, 'prayers'),
+        where('userId', '==', auth.currentUser.uid)  // Use auth.currentUser.uid instead of userId
+      );
+      const prayersSnapshot = await getDocs(prayersQuery);
+      console.log('Found prayers:', prayersSnapshot.size);
+      
+      for (const prayerDoc of prayersSnapshot.docs) {
+        batch.delete(prayerDoc.ref);
+        operationCount++;
+        [batch, operationCount] = await commitBatchIfNeeded(batch, operationCount);
+      }
+
+      // Commit any remaining deletions
+      if (operationCount > 0) {
+        console.log('Committing final batch, operations:', operationCount);
+        await batch.commit();
+      }
+
+      console.log('Successfully cleared all user data');
+    } catch (error) {
+      console.error('Error clearing user data:', error);
+      if (error instanceof Error) {
+        console.error('Error details:', {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        });
+      }
+      throw error;
+    }
+  }
 }
 
 export default FirebaseService.getInstance(); 
