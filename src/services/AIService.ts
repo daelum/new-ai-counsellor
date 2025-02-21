@@ -53,6 +53,64 @@ class AIService {
   private eventEmitter: SimpleEventEmitter = new SimpleEventEmitter();
   private static readonly DEVOTIONAL_CACHE_KEY = 'cached_devotional';
   private static readonly DEVOTIONAL_HISTORY_KEY = 'devotional_history';
+  private deepThoughtHistory: ChatCompletionMessageParam[] = [
+    {
+      role: "system",
+      content: `You are Solomon, a profoundly wise counselor known for deep philosophical and theological insight. For every response, engage in thorough dialectical reasoning that explores multiple perspectives before reaching a conclusion. Your responses should demonstrate the depth of thought that made you legendary.
+
+REASONING PROCESS:
+1. Initial Analysis (2-3 points):
+   - Begin with the fundamental aspects of the question
+   - Consider the philosophical and theological implications
+   - Identify key assumptions and concepts
+
+2. Deeper Exploration (3-4 points):
+   - Examine opposing viewpoints
+   - Consider potential objections
+   - Analyze biblical principles that relate to each perspective
+   - Draw connections to human experience and divine wisdom
+
+3. Synthesis and Resolution (2-3 points):
+   - Reconcile different viewpoints where possible
+   - Address and resolve apparent contradictions
+   - Draw from both reason and scripture
+   - Consider practical implications for daily life
+
+FORMAT:
+1. [First reasoning step with detailed explanation]
+2. [Second reasoning step, exploring counterarguments]
+3. [Third reasoning step, considering biblical perspective]
+4. [Fourth reasoning step, examining practical implications]
+5. [Fifth reasoning step, addressing potential concerns]
+6. [Sixth reasoning step, moving toward synthesis]
+7. [Final reasoning step, reaching a conclusion]
+
+
+Final Answer: [Your comprehensive answer]
+
+
+Biblical Foundation:
+
+
+[First Bible verse with reference and explanation]
+
+
+[Second Bible verse with reference and explanation]
+
+
+[If applicable, third Bible verse with reference and explanation]
+
+
+[Final synthesizing statement about how these verses work together]
+
+IMPORTANT FORMATTING:
+- Use TWO blank lines (double \\n\\n) after the Final Answer section
+- Use TWO blank lines before and after each Bible verse
+- Use TWO blank lines before the final synthesizing statement
+- The word "Biblical Foundation:" should be followed by TWO blank lines
+- Each section must be clearly separated by these double line breaks`
+    }
+  ];
 
   private constructor() {
     if (!OPENAI_API_KEY) {
@@ -865,88 +923,123 @@ Additional guidelines for your responses:
     }
   }
 
-  public async getDeepThoughtResponse(text: string, onStream?: (chunk: { answer?: string; reasoning?: string[] }) => void): Promise<{ answer: string; reasoning: string[] }> {
+  public async getDeepThoughtResponse(
+    text: string,
+    onStream?: (chunk: { answer?: string; reasoning?: string[] }) => void
+  ): Promise<{ answer: string; reasoning: string[] }> {
     try {
-      console.log('Making Deepseek API request...');
-      
-      if (!DEEPSEEK_API_KEY) {
-        throw new Error('Deepseek API key is not configured');
-      }
+      console.log('\n=== Starting Deep Thought Request ===');
+      console.log('User Query:', text);
 
-      const requestBody = {
-        model: 'deepseek-reasoner',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are Solomon, a wise philosopher and theologian. For each response, provide your reasoning within <think> tags and your final answer within <answer> tags.'
-          },
-          {
-            role: 'user',
-            content: `Please analyze this question: ${text}`
-          }
-        ],
-        temperature: 0.7,
-        max_tokens: 2000,
-        stream: false
-      };
-
-      console.log('Request body:', JSON.stringify(requestBody));
-
-      const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(requestBody)
+      // Add user's message to history
+      this.deepThoughtHistory.push({
+        role: "user",
+        content: text
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('API error response:', errorText);
-        throw new Error(`API request failed with status ${response.status}: ${errorText}`);
+      let attempts = 0;
+      const maxAttempts = 2;
+
+      while (attempts < maxAttempts) {
+        try {
+          const response = await this.openai.chat.completions.create({
+            model: "gpt-4-turbo-preview",
+            messages: attempts === 0 ? this.deepThoughtHistory : [
+              ...this.deepThoughtHistory,
+              {
+                role: "system",
+                content: "Your last response did not follow the required format. Remember to:\n1. Start with numbered reasoning steps\n2. Include 'Final Answer:' section followed by TWO blank lines\n3. Include 'Biblical Foundation:' followed by TWO blank lines\n4. Leave TWO blank lines between each Bible verse\n5. Leave TWO blank lines before the final synthesizing statement\n\nUse double line breaks (\\n\\n) to create proper spacing."
+              }
+            ],
+            temperature: 0.7,
+            max_tokens: 2000
+          });
+
+          const content = response.choices[0]?.message?.content;
+          if (!content) {
+            throw new Error('No content received from OpenAI');
+          }
+
+          // Process the content while preserving double line breaks
+          const lines = content
+            .split(/\n/)
+            .map(line => line.trim());
+
+          // Find the index where reasoning ends (first non-numbered line)
+          const answerIndex = lines.findIndex(line => 
+            line && !line.match(/^\d+[\.)]/));
+
+          const reasoning = lines
+            .slice(0, answerIndex > 0 ? answerIndex : 0)
+            .filter(line => line.match(/^\d+[\.)]/))
+            .map(line => line.replace(/^\d+[\.)]\s*/, '').trim());
+
+          // Preserve original line breaks in the answer
+          const answer = lines.slice(answerIndex > 0 ? answerIndex : lines.length - 1)
+            .join('\n');
+
+          // Validate response format
+          if (reasoning.length === 0 || 
+              !answer || 
+              !answer.toLowerCase().includes('final answer') ||
+              !answer.includes('\n\n')) {
+            if (attempts < maxAttempts - 1) {
+              attempts++;
+              continue;
+            }
+            throw new Error('Failed to extract reasoning or answer from response');
+          }
+
+          // Add assistant's response to history only if it's valid
+          this.deepThoughtHistory.push({
+            role: "assistant",
+            content: content
+          });
+
+          // Keep history manageable (system prompt + last 10 exchanges)
+          if (this.deepThoughtHistory.length > 21) {
+            this.deepThoughtHistory = [
+              this.deepThoughtHistory[0], // Keep system prompt
+              ...this.deepThoughtHistory.slice(-20) // Keep last 20 messages (10 exchanges)
+            ];
+          }
+
+          console.log('\n=== Final Response ===');
+          console.log('Reasoning steps:', reasoning.length);
+          console.log('Answer length:', answer.length);
+
+          // If streaming callback is provided, send the final result
+          if (onStream) {
+            onStream({
+              reasoning,
+              answer
+            });
+          }
+
+          return { answer, reasoning };
+        } catch (error) {
+          if (attempts === maxAttempts - 1) {
+            throw error;
+          }
+          attempts++;
+        }
       }
 
-      const responseText = await response.text();
-      console.log('Raw response text:', responseText);
-
-      if (!responseText) {
-        throw new Error('Empty response received from API');
-      }
-
-      const responseData = JSON.parse(responseText);
-      const content = responseData.choices?.[0]?.message?.content;
-
-      if (!content) {
-        throw new Error('Invalid response format from API');
-      }
-
-      // Extract reasoning and answer from tags
-      const thinkMatch = content.match(/<think>(.*?)<\/think>/s);
-      const answerMatch = content.match(/<answer>(.*?)<\/answer>/s);
-
-      const reasoning = thinkMatch ? 
-        thinkMatch[1].trim().split('\n').map((line: string) => line.trim()).filter((line: string) => line) : 
-        [];
-      const answer = answerMatch ? answerMatch[1].trim() : content;
-
-      return {
-        answer,
-        reasoning
-      };
-
-    } catch (error) {
-      console.error('Error in getDeepThoughtResponse:', error);
-      if (error instanceof Error) {
-        console.error('Error details:', {
-          message: error.message,
-          stack: error.stack,
-          name: error.name
-        });
-      }
-      throw new Error('Failed to get response. Please try again.');
+      throw new Error('Failed to get properly formatted response after multiple attempts');
+    } catch (error: unknown) {
+      console.error('\n=== Deep Thought Error ===');
+      console.error('Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        name: error instanceof Error ? error.name : 'Unknown',
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      throw error;
     }
+  }
+
+  // Add method to clear Deep Thought history if needed
+  public clearDeepThoughtHistory(): void {
+    this.deepThoughtHistory = [this.deepThoughtHistory[0]]; // Keep only the system prompt
   }
 }
 
