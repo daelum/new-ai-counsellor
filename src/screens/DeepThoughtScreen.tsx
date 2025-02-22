@@ -262,34 +262,43 @@ const DeepThoughtScreen = () => {
                 } else if (section.startsWith('Biblical Foundation:')) {
                   const content = section.replace('Biblical Foundation:', '').trim();
                   
-                  // Split into verse blocks (each containing reference, text, and explanation)
-                  const verseBlocks = content.split(/(?=\n[A-Za-z]+\s+\d+:\d+)/).filter(Boolean);
+                  // Split content into verses and synthesis
+                  const parts = content.split(/\n\nSynthesizing these biblical insights/i);
+                  const versesContent = parts[0];
+                  const synthesisPart = parts[1];
+
+                  // Split verses into individual blocks
+                  const verseBlocks = versesContent.split(/\n\n(?=[A-Z][a-z]+\s+\d+:\d+)/);
                   
                   return (
                     <View key={index} style={styles.section}>
                       <Text style={styles.sectionTitle}>Biblical Foundation</Text>
                       {verseBlocks.map((block, verseIndex) => {
-                        // Split the block into lines
-                        const lines = block.trim().split('\n');
-                        
-                        // First line contains verse reference and text
-                        const verseContent = lines[0];
-                        // Remaining lines form the explanation
-                        const explanation = lines.slice(1).join('\n').trim();
+                        const [reference, ...rest] = block.trim().split('\n');
+                        const text = rest[0]?.replace(/^["']|["']$/g, '').trim();
+                        const explanation = rest.slice(1).join('\n').trim();
                         
                         return (
-                          <View key={verseIndex} style={styles.verseContainer}>
-                            <Text style={[styles.messageText, styles.aiMessageText, styles.verseText]}>
-                              {verseContent}
-                            </Text>
+                          <View 
+                            key={verseIndex} 
+                            style={[
+                              styles.verseContainer,
+                              verseIndex === verseBlocks.length - 1 && !synthesisPart && { borderBottomWidth: 0 }
+                            ]}
+                          >
+                            <Text style={styles.verseReference}>{reference}</Text>
+                            <Text style={styles.verseText}>{text}</Text>
                             {explanation && (
-                              <Text style={[styles.messageText, styles.aiMessageText, styles.verseExplanation]}>
-                                {explanation}
-                              </Text>
+                              <Text style={styles.verseExplanation}>{explanation}</Text>
                             )}
                           </View>
                         );
                       })}
+                      {synthesisPart && (
+                        <Text style={styles.synthesisText}>
+                          {"Synthesizing these biblical insights" + synthesisPart}
+                        </Text>
+                      )}
                     </View>
                   );
                 } else {
@@ -563,6 +572,22 @@ const styles = StyleSheet.create({
     color: '#666980',
     fontSize: 15,
     lineHeight: 22,
+    marginTop: 8,
+  },
+  verseReference: {
+    color: '#10a37f',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  synthesisText: {
+    color: '#ffffff',
+    fontSize: 15,
+    lineHeight: 22,
+    marginTop: 24,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#444654',
   },
 });
 
