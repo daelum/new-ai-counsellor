@@ -6,6 +6,8 @@ import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
+import ChurchesNearMe from '../components/ChurchesNearMe';
+import CounselorsNearMe from '../components/CounselorsNearMe';
 
 type RootStackParamList = {
   HomeScreen: undefined;
@@ -39,7 +41,7 @@ const HomeScreen = () => {
           </View>
           <View style={styles.divider} />
           <Text style={styles.welcomeSubtitle}>
-          Your Christian faith-based counselor inspired by King Solomon, powered by AI.
+            Your Christian faith-based counselor, inspired by King Solomon, powered by AI.
           </Text>
         </View>
       </View>
@@ -119,6 +121,9 @@ const HomeScreen = () => {
         </Text>
         <Text style={styles.quoteReference}>James 1:5 (NIV)</Text>
       </View>
+
+      <ChurchesNearMe />
+      <CounselorsNearMe />
 
       <View style={styles.featuresContainer}>
         <Text style={styles.featuresTitle}>Features</Text>

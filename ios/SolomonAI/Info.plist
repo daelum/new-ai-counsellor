@@ -86,5 +86,11 @@
     <string>Light</string>
     <key>UIViewControllerBasedStatusBarAppearance</key>
     <false/>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Solomon needs access to your location to find churches near you.</string>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>Solomon needs access to your location to find churches near you.</string>
+    <key>NSLocationAlwaysUsageDescription</key>
+    <string>Solomon needs access to your location to find churches near you.</string>
   </dict>
 </plist>
