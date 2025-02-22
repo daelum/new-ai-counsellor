@@ -32,10 +32,16 @@ const HomeScreen = () => {
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <Text h3 style={styles.title}>Welcome to Solomon AI</Text>
-        <Text style={styles.subtitle}>
-          Your personal AI Christian counselor, inspired by the wisdom of King Solomon
-        </Text>
+        <View style={styles.welcomeContainer}>
+          <View style={styles.welcomeTextContainer}>
+            <Text h2 style={styles.welcomeTitle}>Welcome to</Text>
+            <Text h1 style={styles.solomonTitle}>Solomon AI</Text>
+          </View>
+          <View style={styles.divider} />
+          <Text style={styles.welcomeSubtitle}>
+          Your Christian faith-based counselor inspired by King Solomon, powered by AI.
+          </Text>
+        </View>
       </View>
 
       <View style={styles.actionsContainer}>
@@ -119,19 +125,35 @@ const HomeScreen = () => {
         <View style={styles.featuresList}>
           <View style={styles.featureItem}>
             <Ionicons name="heart" size={20} color="#10a37f" />
-            <Text style={styles.featureText}>Compassionate AI Counseling</Text>
+            <Text style={styles.featureText}>AI-Powered Biblical Counseling</Text>
           </View>
           <View style={styles.featureItem}>
             <Ionicons name="book" size={20} color="#10a37f" />
-            <Text style={styles.featureText}>Biblical Integration</Text>
+            <Text style={styles.featureText}>Scripture Search & Study</Text>
+          </View>
+          <View style={styles.featureItem}>
+            <Ionicons name="mic" size={20} color="#10a37f" />
+            <Text style={styles.featureText}>Voice Interaction & Response</Text>
+          </View>
+          <View style={styles.featureItem}>
+            <Ionicons name="calendar" size={20} color="#10a37f" />
+            <Text style={styles.featureText}>Personalized Daily Devotionals</Text>
+          </View>
+          <View style={styles.featureItem}>
+            <Ionicons name="bulb" size={20} color="#10a37f" />
+            <Text style={styles.featureText}>Deep Theological Insights</Text>
+          </View>
+          <View style={styles.featureItem}>
+            <Ionicons name="people" size={20} color="#10a37f" />
+            <Text style={styles.featureText}>Community Prayer Board</Text>
           </View>
           <View style={styles.featureItem}>
             <Ionicons name="shield" size={20} color="#10a37f" />
-            <Text style={styles.featureText}>Safe and Private Space</Text>
+            <Text style={styles.featureText}>Private & Secure Conversations</Text>
           </View>
           <View style={styles.featureItem}>
             <Ionicons name="infinite" size={20} color="#10a37f" />
-            <Text style={styles.featureText}>24/7 Availability</Text>
+            <Text style={styles.featureText}>Available 24/7</Text>
           </View>
         </View>
       </View>
@@ -145,20 +167,49 @@ const styles = StyleSheet.create({
     backgroundColor: '#343541',
   },
   header: {
-    padding: 20,
-    paddingTop: 30,
-    alignItems: 'center',
+    paddingTop: 45,
+    paddingBottom: 25,
+    backgroundColor: '#3a3b47',
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+    elevation: 8,
   },
-  title: {
-    color: '#ffffff',
-    textAlign: 'center',
+  welcomeContainer: {
+    paddingHorizontal: 25,
+  },
+  welcomeTextContainer: {
     marginBottom: 10,
   },
-  subtitle: {
-    fontSize: 16,
-    color: '#666980',
-    textAlign: 'center',
-    lineHeight: 24,
+  welcomeTitle: {
+    color: '#10a37f',
+    fontSize: 22,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  solomonTitle: {
+    color: '#ffffff',
+    fontSize: 34,
+    fontWeight: 'bold',
+    letterSpacing: 0.8,
+  },
+  divider: {
+    height: 2,
+    width: 50,
+    backgroundColor: '#10a37f',
+    marginVertical: 12,
+  },
+  welcomeSubtitle: {
+    fontSize: 15,
+    color: '#9999a5',
+    lineHeight: 22,
+    marginTop: 3,
   },
   actionsContainer: {
     padding: 15,

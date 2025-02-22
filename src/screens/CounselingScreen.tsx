@@ -1,8 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { View, ScrollView, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Dimensions, TouchableOpacity, Alert, Modal, TouchableWithoutFeedback } from 'react-native';
 import { Text, Input, Button, ListItem } from '@rneui/themed';
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
+import Voice from '@react-native-voice/voice';
 import AIService from '../services/AIService';
 import FirebaseService, { Conversation, Message as DBMessage } from '../services/FirebaseService';
 import { useUser } from '../contexts/UserContext';
@@ -27,128 +28,130 @@ type FirestoreMessage = {
   conversationId: string;
 }
 
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: '#343541',
-      position: 'relative',
-    },
-    messagesContainer: {
-      flex: 1,
-      marginBottom: 49,
-    },
-    messagesContent: {
-      padding: 10,
-      paddingBottom: 10,
-    },
-    loadingContainer: {
-      padding: 20,
-      alignItems: 'center',
-    },
-    messageContainer: {
-      marginVertical: 5,
-      paddingHorizontal: 15,
-      paddingVertical: 10,
-    },
-    userMessageContainer: {
-      backgroundColor: '#444654',
-    },
-    aiMessageContainer: {
-      backgroundColor: '#343541',
-    },
-    messageContent: {
-      maxWidth: '100%',
-    },
-    messageText: {
-      fontSize: 16,
-      lineHeight: 24,
-    },
-    userMessageText: {
-      color: '#ffffff',
-    },
-    aiMessageText: {
-      color: '#ffffff',
-    },
-    inputWrapper: {
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      backgroundColor: '#202123',
-      borderTopWidth: 1,
-      borderTopColor: '#444654',
-      minHeight: 49,
-    },
-    inputContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingVertical: 6,
-      paddingHorizontal: 12,
-      minHeight: 49,
-      backgroundColor: 'transparent',
-    },
-    input: {
-      flex: 1,
-      paddingRight: 8,
-      backgroundColor: 'transparent',
-      paddingHorizontal: 0,
-      marginHorizontal: 0,
-      paddingVertical: 0,
-      marginVertical: 0,
-      borderBottomWidth: 0,
-    },
-    inputField: {
-      borderWidth: 1,
-      borderColor: '#444654',
-      borderRadius: 16,
-      paddingHorizontal: 12,
-      backgroundColor: '#343541',
-      minHeight: 36,
-      maxHeight: 120,
-      marginTop: 0,
-      marginBottom: 0,
-      paddingVertical: 4,
-    },
-    inputText: {
-      color: '#ffffff',
-      fontSize: 15,
-      textAlign: 'left',
-      textAlignVertical: 'center',
-      paddingTop: 0,
-      paddingBottom: 0,
-      lineHeight: 20,
-      height: '100%',
-    },
-    buttonsContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginLeft: 8,
-      height: '100%',
-    },
-    iconButton: {
-      width: 36,
-      height: 36,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginLeft: 6,
-      borderRadius: 18,
-      backgroundColor: '#343541',
-      borderWidth: 1,
-      borderColor: '#444654',
-    },
-    recordingButton: {
-      backgroundColor: 'rgba(255, 59, 48, 0.1)',
-      borderColor: '#ff3b30',
-    },
-    activeIconButton: {
-      backgroundColor: '#10a37f',
-      borderColor: '#10a37f',
-    },
-    disabledIconButton: {
-      backgroundColor: '#343541',
-      borderColor: '#444654',
-      opacity: 0.5,
-    },
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#343541',
+    position: 'relative',
+  },
+  messagesContainer: {
+    flex: 1,
+    marginBottom: 49,
+  },
+  messagesContent: {
+    padding: 10,
+    paddingBottom: 10,
+  },
+  loadingContainer: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  messageContainer: {
+    marginVertical: 5,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+  },
+  userMessageContainer: {
+    backgroundColor: '#444654',
+  },
+  aiMessageContainer: {
+    backgroundColor: '#343541',
+  },
+  messageContent: {
+    maxWidth: '100%',
+  },
+  messageText: {
+    fontSize: 16,
+    lineHeight: 24,
+  },
+  userMessageText: {
+    color: '#ffffff',
+  },
+  aiMessageText: {
+    color: '#ffffff',
+  },
+  inputWrapper: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#202123',
+    borderTopWidth: 1,
+    borderTopColor: '#444654',
+    minHeight: 20,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: 10,
+    paddingTop: 8,
+    paddingHorizontal: 12,
+    minHeight: 5,
+    backgroundColor: 'transparent',
+  },
+  input: {
+    flex: 1,
+    paddingRight: 8,
+    backgroundColor: 'transparent',
+    paddingHorizontal: 0,
+    marginHorizontal: 0,
+    paddingVertical: 0,
+    marginVertical: 0,
+    borderBottomWidth: 0,
+    height: 37,
+  },
+  inputField: {
+    borderWidth: 1,
+    borderColor: '#444654',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    backgroundColor: '#343541',
+    minHeight: 20,
+    maxHeight: 120,
+    marginTop: 0,
+    marginBottom: 0,
+    paddingVertical: 0,
+  },
+  inputText: {
+    color: '#ffffff',
+    fontSize: 15,
+    textAlign: 'left',
+    textAlignVertical: 'center',
+    paddingTop: 0,
+    paddingBottom: 0,
+    lineHeight: 20,
+    height: '100%',
+  },
+  buttonsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 8,
+    height: '100%',
+  },
+  iconButton: {
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 6,
+    borderRadius: 18,
+    backgroundColor: '#343541',
+    borderWidth: 1,
+    borderColor: '#444654',
+  },
+  recordingButton: {
+    backgroundColor: 'rgba(255, 59, 48, 0.1)',
+    borderColor: '#ff3b30',
+  },
+  activeIconButton: {
+    backgroundColor: '#10a37f',
+    borderColor: '#10a37f',
+  },
+  disabledIconButton: {
+    backgroundColor: '#343541',
+    borderColor: '#444654',
+    opacity: 0.5,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -307,7 +310,7 @@ const RecordingModal = ({
   </Modal>
 );
 
-const CounselingScreen = () => {
+const CounselingScreen: React.FC = () => {
   const navigation = useNavigation();
   const { user } = useUser();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -325,6 +328,8 @@ const CounselingScreen = () => {
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [showRecordingModal, setShowRecordingModal] = useState(false);
   const recordingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const [recognizedText, setRecognizedText] = useState('');
 
   // Update messagesRef whenever messages change
   useEffect(() => {
@@ -350,7 +355,7 @@ const CounselingScreen = () => {
   useEffect(() => {
     const welcomeMessage: Message = {
       id: 'welcome',
-      text: "Hello, I'm Solomon. This is a safe space for you. I'm here to listen, support, and help with whatever is on your mind. Feel free to type or start a voice chat.",
+      text: "Hello, I'm Solomon. This is a safe space for you. I'm here to listen, support, and help with whatever is on your mind. Feel free to type or say 'Hey Solomon' to start a voice chat.",
       sender: 'ai',
       timestamp: new Date(),
     };
@@ -372,6 +377,78 @@ const CounselingScreen = () => {
       loadPreviousConversations();
     }
   }, [showConversationsModal, user]);
+
+  // Initialize voice recognition
+  const setupVoiceListeners = useCallback(() => {
+    Voice.onSpeechStart = () => {
+      console.log('Speech started');
+      setIsListening(true);
+    };
+
+    Voice.onSpeechEnd = () => {
+      console.log('Speech ended');
+      setIsListening(false);
+      // Restart listening after a delay if not recording
+      if (!isRecording) {
+        setTimeout(startListening, 1000);
+      }
+    };
+
+    Voice.onSpeechResults = (event: { value?: string[] }) => {
+      if (event.value && event.value[0]?.toLowerCase().includes('hey solomon')) {
+        console.log('Wake word detected');
+        stopListening();
+        handleStartRecording();
+      }
+    };
+
+    Voice.onSpeechError = (error: { error?: { message?: string } }) => {
+      console.error('Speech recognition error:', error);
+      setIsListening(false);
+      // Restart listening after error if not recording
+      if (!isRecording) {
+        setTimeout(startListening, 2000);
+      }
+    };
+  }, [isRecording]);
+
+  const setupVoiceRecognition = useCallback(async () => {
+    try {
+      // First, destroy any existing Voice instance
+      await Voice.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // Initialize Voice
+      const isAvailable = await Voice.isAvailable();
+      if (!isAvailable) {
+        Alert.alert(
+          'Microphone Access Required',
+          'Please enable microphone access in your device settings to use voice features.'
+        );
+        return;
+      }
+
+      // Set up voice listeners
+      setupVoiceListeners();
+
+      // Start listening with a delay to ensure proper initialization
+      setTimeout(startListening, 500);
+    } catch (error: unknown) {
+      console.error('Error setting up voice recognition:', error);
+    }
+  }, [setupVoiceListeners]);
+
+  // Start background listening when the screen mounts
+  useEffect(() => {
+    setupVoiceRecognition();
+
+    // Cleanup when component unmounts
+    return () => {
+      stopListening().then(() => {
+        Voice.destroy().then(Voice.removeAllListeners);
+      });
+    };
+  }, [setupVoiceRecognition]);
 
   const setupAudio = async () => {
     try {
@@ -554,6 +631,50 @@ const CounselingScreen = () => {
     setRecordingDuration(0);
   };
 
+  const startListening = async () => {
+    try {
+      if (isRecording) {
+        console.log('Cannot start listening while recording');
+        return;
+      }
+
+      // Destroy any existing instance first
+      await Voice.destroy();
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      await Voice.start('en-US');
+      console.log('Voice recognition started');
+    } catch (error: unknown) {
+      console.error('Error starting voice recognition:', error);
+      // If we get the "already started" error, try to recover
+      if (error instanceof Error && error.message?.includes('already started')) {
+        try {
+          await Voice.destroy();
+          await new Promise(resolve => setTimeout(resolve, 500));
+          await Voice.start('en-US');
+        } catch (retryError) {
+          console.error('Error in voice recognition retry:', retryError);
+        }
+      }
+    }
+  };
+
+  const stopListening = async () => {
+    try {
+      await Voice.stop();
+      console.log('Voice recognition stopped');
+    } catch (error: unknown) {
+      console.error('Error stopping voice recognition:', error);
+    } finally {
+      // Always try to destroy after stopping
+      try {
+        await Voice.destroy();
+      } catch (error: unknown) {
+        console.error('Error destroying voice recognition:', error);
+      }
+    }
+  };
+
   const handleStartRecording = async () => {
     try {
       await aiService.startVoiceRecording();
@@ -563,6 +684,8 @@ const CounselingScreen = () => {
     } catch (error) {
       console.error('Error starting recording:', error);
       Alert.alert('Error', 'Failed to start recording. Please try again.');
+      // Restart background listening if recording fails
+      startListening();
     }
   };
 
@@ -625,9 +748,11 @@ const CounselingScreen = () => {
     } catch (error) {
       console.error('Error handling recording:', error);
       Alert.alert('Error', 'Failed to process recording. Please try again.');
-      setIsLoading(false);
     } finally {
       setIsRecording(false);
+      setIsLoading(false);
+      // Restart background listening after recording is done
+      startListening();
     }
   };
 
@@ -637,6 +762,8 @@ const CounselingScreen = () => {
       stopRecordingTimer();
       setShowRecordingModal(false);
       setIsRecording(false);
+      // Restart background listening after canceling
+      startListening();
     } catch (error) {
       console.error('Error canceling recording:', error);
     }

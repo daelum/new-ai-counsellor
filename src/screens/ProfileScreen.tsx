@@ -10,6 +10,7 @@ import FirebaseService from '../services/FirebaseService';
 const ProfileScreen = () => {
   const [devotionalEnabled, setDevotionalEnabled] = useState(false);
   const [wisdomEnabled, setWisdomEnabled] = useState(false);
+  const [prayerNotificationsEnabled, setPrayerNotificationsEnabled] = useState(true);
   const [devotionalTime, setDevotionalTime] = useState(new Date());
   const [wisdomTime, setWisdomTime] = useState(new Date());
   const [showDevotionalTimePicker, setShowDevotionalTimePicker] = useState(false);
@@ -39,6 +40,9 @@ const ProfileScreen = () => {
     try {
       const devotionalSettings = await notificationService.getNotificationSettings('devotional');
       const wisdomSettings = await notificationService.getNotificationSettings('wisdom');
+      const prayerEnabled = await notificationService.getPrayerNotificationsEnabled();
+      
+      setPrayerNotificationsEnabled(prayerEnabled);
       
       if (devotionalSettings) {
         setDevotionalEnabled(devotionalSettings.enabled);
@@ -111,6 +115,17 @@ const ProfileScreen = () => {
     } catch (error) {
       console.error('Error toggling wisdom notifications:', error);
       setWisdomEnabled(!wisdomEnabled); // Revert on error
+    }
+  };
+
+  const togglePrayerNotifications = async () => {
+    try {
+      const newState = !prayerNotificationsEnabled;
+      setPrayerNotificationsEnabled(newState);
+      await notificationService.togglePrayerNotifications(newState);
+    } catch (error) {
+      console.error('Error toggling prayer notifications:', error);
+      setPrayerNotificationsEnabled(!prayerNotificationsEnabled); // Revert on error
     }
   };
 
@@ -353,6 +368,26 @@ const ProfileScreen = () => {
       </View>
 
       <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Notification Settings</Text>
+
+        <View style={[styles.settingCard, styles.marginBottom]}>
+          <View style={styles.settingHeader}>
+            <Ionicons name="notifications-outline" size={24} color="#10a37f" />
+            <Text style={styles.settingTitle}>Prayer Board</Text>
+          </View>
+          <Text style={styles.settingDescription}>
+            Receive notifications when someone prays for your prayer requests
+          </Text>
+          <View style={styles.settingRow}>
+            <Text style={styles.settingLabel}>Enable Notifications</Text>
+            <Switch
+              value={prayerNotificationsEnabled}
+              onValueChange={togglePrayerNotifications}
+              color="#10a37f"
+            />
+          </View>
+        </View>
+
         <View style={[styles.settingCard, styles.marginBottom]}>
           <View style={styles.settingHeader}>
             <Ionicons name="notifications-outline" size={24} color="#10a37f" />
@@ -539,8 +574,8 @@ const styles = StyleSheet.create({
   settingDescription: {
     fontSize: 14,
     color: '#666980',
-    marginBottom: 16,
-    lineHeight: 20,
+    marginTop: 5,
+    paddingHorizontal: 15,
   },
   settingRow: {
     flexDirection: 'row',
@@ -548,7 +583,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     borderTopWidth: 1,
-    borderTopColor: '#343541',
+    borderTopColor: '#444654',
   },
   settingLabel: {
     fontSize: 16,
@@ -607,7 +642,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
     borderTopWidth: 1,
-    borderTopColor: '#343541',
+    borderTopColor: '#444654',
   },
   infoLabel: {
     fontSize: 16,
@@ -742,6 +777,24 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     textAlign: 'center',
     marginTop: 20,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    color: '#ffffff',
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  settingLabelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  topMargin: {
+    marginTop: 20,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#444654',
+    marginVertical: 15,
   },
 });
 

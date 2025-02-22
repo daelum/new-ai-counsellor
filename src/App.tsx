@@ -7,11 +7,13 @@ import NotificationService from './services/NotificationService';
 import HomeScreen from './screens/HomeScreen';
 import CounselingScreen from './screens/CounselingScreen';
 import BibleScreen from './screens/BibleScreen';
+import BibleReaderScreen from './screens/BibleReaderScreen';
 import DevotionalScreen from './screens/DevotionalScreen';
 import ProfileScreen from './screens/ProfileScreen';
+import { RootStackParamList, TabParamList } from './types/navigation';
 
-const Stack = createNativeStackNavigator();
-const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator<RootStackParamList>();
+const Tab = createBottomTabNavigator<TabParamList>();
 
 function TabNavigator() {
   return (
@@ -67,11 +69,30 @@ export default function App() {
 
   return (
     <NavigationContainer>
-      <Stack.Navigator>
+      <Stack.Navigator
+        screenOptions={{
+          headerStyle: {
+            backgroundColor: '#343541',
+          },
+          headerTintColor: '#ffffff',
+          headerBackTitle: 'Back',
+          gestureEnabled: true,
+          animation: 'slide_from_right',
+        }}
+      >
         <Stack.Screen
           name="MainTabs"
           component={TabNavigator}
           options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="BibleReader"
+          component={BibleReaderScreen}
+          options={{
+            title: 'Bible Reader',
+            headerShown: true,
+            animation: 'slide_from_right'
+          }}
         />
       </Stack.Navigator>
     </NavigationContainer>

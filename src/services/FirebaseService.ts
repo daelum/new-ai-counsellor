@@ -22,6 +22,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
+import NotificationService from './NotificationService';
 
 export interface User {
   id: string;
@@ -68,7 +69,11 @@ export interface Message {
 
 class FirebaseService {
   private static instance: FirebaseService;
-  private constructor() {}
+  private notificationService: NotificationService;
+
+  private constructor() {
+    this.notificationService = NotificationService.getInstance();
+  }
 
   static getInstance(): FirebaseService {
     if (!FirebaseService.instance) {
@@ -225,26 +230,42 @@ class FirebaseService {
   }
 
   async updatePrayerCount(prayerId: string, userId: string, isPraying: boolean): Promise<void> {
-    const prayerRef = doc(db, 'prayers', prayerId);
-    const prayerDoc = await getDoc(prayerRef);
-    
-    if (!prayerDoc.exists()) {
-      throw new Error('Prayer not found');
+    try {
+      const prayerRef = doc(db, 'prayers', prayerId);
+      const prayerDoc = await getDoc(prayerRef);
+      
+      if (!prayerDoc.exists()) {
+        throw new Error('Prayer not found');
+      }
+
+      const prayer = prayerDoc.data() as Prayer;
+      const prayedBy = new Set(prayer.prayedBy);
+
+      // Get the praying user's name
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      const prayingUserName = userDoc.exists() ? userDoc.data().displayName || 'Someone' : 'Someone';
+
+      if (isPraying) {
+        prayedBy.add(userId);
+        // Send notification to prayer author if it's a new prayer
+        if (!prayer.prayedBy.includes(userId)) {
+          await this.notificationService.sendPrayerNotification(
+            prayer.userId,
+            prayingUserName
+          );
+        }
+      } else {
+        prayedBy.delete(userId);
+      }
+
+      await updateDoc(prayerRef, {
+        prayerCount: prayedBy.size,
+        prayedBy: Array.from(prayedBy),
+      });
+    } catch (error) {
+      console.error('Error updating prayer count:', error);
+      throw error;
     }
-
-    const prayer = prayerDoc.data() as Prayer;
-    const prayedBy = new Set(prayer.prayedBy);
-
-    if (isPraying) {
-      prayedBy.add(userId);
-    } else {
-      prayedBy.delete(userId);
-    }
-
-    await updateDoc(prayerRef, {
-      prayerCount: prayedBy.size,
-      prayedBy: Array.from(prayedBy),
-    });
   }
 
   async deletePrayer(prayerId: string, userId: string): Promise<void> {

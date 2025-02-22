@@ -21,7 +21,9 @@
         "UIBackgroundModes": [
           "remote-notification"
         ],
-        "NSUserNotificationUsageDescription": "We use notifications to send you daily Bible verses and important updates."
+        "NSUserNotificationUsageDescription": "We use notifications to send you daily Bible verses and important updates.",
+        "NSMicrophoneUsageDescription": "We need access to your microphone to enable voice commands and the 'Hey Solomon' wake word feature.",
+        "NSSpeechRecognitionUsageDescription": "We use speech recognition to enable voice commands and the 'Hey Solomon' wake word feature."
       }
     },
     "android": {
@@ -33,7 +35,9 @@
       "permissions": [
         "NOTIFICATIONS",
         "SCHEDULE_EXACT_ALARM",
-        "USE_EXACT_ALARM"
+        "USE_EXACT_ALARM",
+        "RECORD_AUDIO",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -44,10 +48,14 @@
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
-          "color": "#10a37f",
-          "sounds": [
-            "./assets/notification-sound.wav"
-          ]
+          "color": "#10a37f"
+        }
+      ],
+      [
+        "@react-native-voice/voice",
+        {
+          "microphonePermission": "We need access to your microphone to enable voice commands.",
+          "speechRecognitionPermission": "We need speech recognition to enable voice commands."
         }
       ]
     ],

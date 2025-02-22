@@ -242,6 +242,24 @@ Additional guidelines for your responses:
 
   public async startVoiceRecording(): Promise<void> {
     try {
+      // First, stop any playing audio
+      await this.stopAndUnloadSound();
+
+      // First, ensure any existing recording is properly cleaned up
+      if (this.recording) {
+        console.log('Cleaning up existing recording...');
+        try {
+          await this.recording.stopAndUnloadAsync();
+          this.recording = null;
+        } catch (error) {
+          console.log('Error cleaning up existing recording:', error);
+          // Continue with new recording even if cleanup fails
+        }
+      }
+
+      // Wait a moment for cleanup to complete
+      await new Promise(resolve => setTimeout(resolve, 500));
+
       console.log('Requesting audio recording permissions...');
       const permission = await Audio.requestPermissionsAsync();
       
@@ -249,43 +267,44 @@ Additional guidelines for your responses:
         throw new Error('Audio recording permission not granted');
       }
 
+      console.log('Setting up audio mode...');
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
       });
+
+      // Create new recording instance
+      console.log('Creating new recording...');
+      const newRecording = new Audio.Recording();
+      
+      try {
+        await newRecording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('Only one Recording object')) {
+          console.log('Detected duplicate recording, attempting cleanup...');
+          await Audio.setIsEnabledAsync(false);
+          await Audio.setIsEnabledAsync(true);
+          await new Promise(resolve => setTimeout(resolve, 500));
+          await newRecording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+        } else {
+          throw error;
+        }
+      }
 
       console.log('Starting recording...');
-      this.recording = new Audio.Recording();
-      await this.recording.prepareToRecordAsync({
-        ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
-        android: {
-          ...Audio.RecordingOptionsPresets.HIGH_QUALITY.android,
-          extension: '.m4a',
-          sampleRate: 44100,
-          numberOfChannels: 1,
-          bitRate: 128000,
-        },
-        ios: {
-          ...Audio.RecordingOptionsPresets.HIGH_QUALITY.ios,
-          extension: '.m4a',
-          sampleRate: 44100,
-          numberOfChannels: 1,
-          bitRate: 128000,
-          linearPCMBitDepth: 16,
-          linearPCMIsBigEndian: false,
-          linearPCMIsFloat: false,
-        },
-      });
-      
-      this.recordingStatus = {
-        isRecording: true,
-        lastVolume: 0,
-        silenceStart: 0
-      };
-
-      await this.recording.startAsync();
-      console.log('Recording started successfully');
+      await newRecording.startAsync();
+      this.recording = newRecording;
+      this.recordingStatus = { isRecording: true, lastVolume: 0, silenceStart: 0 };
       this.emitRecordingState(true);
+      
+      // Start monitoring audio level
+      this.monitorAudioLevel().catch(error => {
+        console.error('Error monitoring audio level:', error);
+        this.emitRecordingState(false);
+      });
     } catch (error) {
       console.error('Failed to start recording:', error);
       this.emitRecordingState(false);
@@ -294,67 +313,61 @@ Additional guidelines for your responses:
   }
 
   public async stopRecording(): Promise<{ transcription: string; aiResponse: string } | null> {
-    if (!this.recording || !this.recordingStatus.isRecording) {
-      console.log('No active recording to stop');
-      return null;
-    }
-
-    console.log('Stopping recording...');
-    
     try {
-      // First stop the recording and get transcription
-      const transcription = await this.stopVoiceRecording(this.recording);
-      console.log('Got transcription:', transcription);
-      
-      // Clear recording immediately
-      this.recording = null;
-      
-      if (!transcription) {
-        console.log('No transcription received');
-        this.recordingStatus.isRecording = false;
-        this.emitRecordingState(false);
+      if (!this.recording) {
+        console.log('No active recording to stop');
         return null;
       }
 
-      // Get AI response
-      console.log('Getting AI response for transcription...');
-      const aiResponse = await this.getCounselingResponse(transcription, true);
-      console.log('Got AI response:', aiResponse);
-      
-      // Update recording state last
       this.recordingStatus.isRecording = false;
-      this.emitRecordingState(false);
       
-      return { transcription, aiResponse };
-    } catch (error) {
-      console.error('Error in stopRecording:', error);
-      if (error instanceof Error) {
-        console.error('Error details:', {
-          message: error.message,
-          stack: error.stack,
-          name: error.name
-        });
+      try {
+        const transcription = await this.stopVoiceRecording(this.recording);
+        this.recording = null;
+
+        if (transcription) {
+          const aiResponse = await this.getCounselingResponse(transcription, true);
+          return { transcription, aiResponse };
+        }
+      } catch (error) {
+        console.error('Error stopping recording:', error);
+        // Try force cleanup if normal stop fails
+        try {
+          await Audio.setIsEnabledAsync(false);
+          await Audio.setIsEnabledAsync(true);
+          this.recording = null;
+        } catch (e) {
+          console.error('Error in force cleanup:', e);
+        }
       }
       
-      // Ensure we clean up on error
-      this.recording = null;
-      this.recordingStatus.isRecording = false;
+      return null;
+    } catch (error) {
+      console.error('Error in stopRecording:', error);
+      return null;
+    } finally {
       this.emitRecordingState(false);
-      
-      throw error;
     }
   }
 
   public async cancelRecording(): Promise<void> {
-    if (this.recording) {
-      this.recordingStatus.isRecording = false;
-      this.emitRecordingState(false);
-      try {
-        await this.recording.stopAndUnloadAsync();
-      } catch (error) {
-        console.error('Error canceling recording:', error);
+    try {
+      if (this.recording) {
+        this.recordingStatus.isRecording = false;
+        try {
+          await this.recording.stopAndUnloadAsync();
+        } catch (error) {
+          console.error('Error stopping recording:', error);
+          // Try force cleanup if normal stop fails
+          await Audio.setIsEnabledAsync(false);
+          await Audio.setIsEnabledAsync(true);
+        }
+        this.recording = null;
       }
-      this.recording = null;
+    } catch (error) {
+      console.error('Error canceling recording:', error);
+    } finally {
+      this.emitRecordingState(false);
     }
   }
 
@@ -394,18 +407,47 @@ Additional guidelines for your responses:
     }
   }
 
-  public async generateVoiceResponse(text: string): Promise<void> {
-    try {
-      // Ensure proper cleanup of previous sound
-      if (this.sound) {
-        try {
+  public async stopAndUnloadSound(): Promise<void> {
+    if (this.sound) {
+      try {
+        const status = await this.sound.getStatusAsync();
+        if (status.isLoaded) {
+          console.log('Stopping and unloading sound...');
           await this.sound.stopAsync();
           await this.sound.unloadAsync();
-        } catch (error) {
-          console.error('Error cleaning up previous sound:', error);
+          console.log('Sound stopped and unloaded successfully');
         }
+      } catch (error) {
+        console.error('Error stopping sound:', error);
+      } finally {
         this.sound = null;
       }
+    }
+  }
+
+  private async cleanupPreviousSound(): Promise<void> {
+    if (this.sound) {
+      try {
+        const status = await this.sound.getStatusAsync();
+        if (status.isLoaded) {
+          await this.sound.stopAsync();
+          await this.sound.unloadAsync();
+        }
+      } catch (error) {
+        console.error('Error cleaning up previous sound:', error);
+      } finally {
+        this.sound = null;
+      }
+    }
+  }
+
+  public async generateVoiceResponse(text: string): Promise<void> {
+    try {
+      // First, stop any playing audio
+      await this.stopAndUnloadSound();
+
+      // Ensure proper cleanup of previous sound
+      await this.cleanupPreviousSound();
 
       // Set up audio mode first and wait for it to complete
       console.log('Setting up audio mode...');
@@ -693,17 +735,6 @@ Additional guidelines for your responses:
   // Method to clear conversation history if needed
   public clearConversationHistory(): void {
     this.conversationHistory = [this.conversationHistory[0]]; // Keep only the system prompt
-  }
-
-  public async stopAndUnloadSound(): Promise<void> {
-    if (this.sound) {
-      try {
-        await this.sound.stopAsync();
-        await this.sound.unloadAsync();
-      } catch (error) {
-        console.error('Error stopping sound:', error);
-      }
-    }
   }
 
   private async getCachedDevotional(): Promise<{

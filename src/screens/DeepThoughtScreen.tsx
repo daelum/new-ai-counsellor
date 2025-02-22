@@ -409,7 +409,7 @@ const styles = StyleSheet.create({
   },
   messagesContainer: {
     flex: 1,
-    marginBottom: 49,
+    marginBottom: 60,
   },
   messagesContent: {
     padding: 10,
@@ -479,18 +479,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#202123',
     borderTopWidth: 1,
     borderTopColor: '#444654',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    minHeight: 60,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    minHeight: 60,
   },
   input: {
     flex: 1,
     backgroundColor: 'transparent',
     paddingHorizontal: 0,
     marginHorizontal: 0,
+    height: 44,
+    borderBottomWidth: 0,
   },
   inputField: {
     borderWidth: 1,
@@ -498,8 +502,10 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingHorizontal: 12,
     backgroundColor: '#343541',
-    minHeight: 36,
+    minHeight: 44,
     maxHeight: 120,
+    marginTop: 0,
+    marginBottom: 0,
   },
   inputText: {
     color: '#ffffff',

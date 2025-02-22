@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { View, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, Platform, Share } from 'react-native';
 import { Text, SearchBar } from '@rneui/themed';
 import { Ionicons } from '@expo/vector-icons';
+import { CommonActions } from '@react-navigation/native';
 import AIService from '../services/AIService';
+import { BibleScreenNavigationProp } from '../types/navigation';
 
 interface BibleVerse {
   verse: string;
@@ -34,7 +36,11 @@ const PLACEHOLDER_TOPICS = [
   'success and prosperity'
 ];
 
-const BibleScreen = () => {
+interface BibleScreenProps {
+  navigation: BibleScreenNavigationProp;
+}
+
+const BibleScreen = ({ navigation }: BibleScreenProps) => {
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<BibleVerse[]>([]);
@@ -107,7 +113,6 @@ const BibleScreen = () => {
       let shareContent = `${verse.verse}\n\n- ${verse.reference}`;
       
       if ('meaning' in verse) {
-        // If it's a DetailedVerse, include the meaning and application
         shareContent += `\n\nMeaning:\n${verse.meaning}\n\nLife Application:\n${verse.application}`;
       }
       
@@ -120,6 +125,11 @@ const BibleScreen = () => {
     } catch (error) {
       console.error('Error sharing verse:', error);
     }
+  };
+
+  const handleOpenBibleReader = () => {
+    console.log('Attempting to navigate to BibleReader');
+    navigation.navigate('BibleReader');
   };
 
   const renderDetailModal = () => (

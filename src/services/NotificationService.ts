@@ -3,13 +3,14 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import AIService from './AIService';
 
-type NotificationType = 'devotional' | 'wisdom';
+type NotificationType = 'devotional' | 'wisdom' | 'prayer';
 
 interface NotificationSettings {
   enabled: boolean;
   hour: number;
   minute: number;
   notificationId: string | null;
+  prayerNotificationsEnabled?: boolean;
 }
 
 class NotificationService {
@@ -134,6 +135,54 @@ class NotificationService {
   public async getNotificationSettings(type: NotificationType): Promise<NotificationSettings | null> {
     const settings = await AsyncStorage.getItem(this.getSettingsKey(type));
     return settings ? JSON.parse(settings) : null;
+  }
+
+  public async togglePrayerNotifications(enabled: boolean) {
+    try {
+      await AsyncStorage.setItem(
+        `${NotificationService.NOTIFICATION_SETTINGS_PREFIX}prayer_enabled`,
+        JSON.stringify(enabled)
+      );
+    } catch (error) {
+      console.error('Error toggling prayer notifications:', error);
+      throw error;
+    }
+  }
+
+  public async getPrayerNotificationsEnabled(): Promise<boolean> {
+    try {
+      const setting = await AsyncStorage.getItem(
+        `${NotificationService.NOTIFICATION_SETTINGS_PREFIX}prayer_enabled`
+      );
+      return setting ? JSON.parse(setting) : true; // Default to enabled
+    } catch (error) {
+      console.error('Error getting prayer notification settings:', error);
+      return true; // Default to enabled on error
+    }
+  }
+
+  public async sendPrayerNotification(prayerAuthorId: string, prayingUserName: string) {
+    try {
+      // Check if prayer notifications are enabled
+      const isEnabled = await this.getPrayerNotificationsEnabled();
+      if (!isEnabled) {
+        console.log('Prayer notifications are disabled');
+        return;
+      }
+
+      const content = {
+        title: "Someone is Praying for You! 🙏",
+        body: `${prayingUserName} has started praying for your prayer request.`,
+        data: { type: 'prayer' },
+      };
+
+      await Notifications.scheduleNotificationAsync({
+        content,
+        trigger: null, // Send immediately
+      });
+    } catch (error) {
+      console.error('Error sending prayer notification:', error);
+    }
   }
 }
 
