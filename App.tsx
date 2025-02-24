@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -18,6 +18,7 @@ import PrayerBoardScreen from './src/screens/PrayerBoardScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import DeepThoughtScreen from './src/screens/DeepThoughtScreen';
+import SplashScreen from './src/components/SplashScreen';
 
 // Import context
 import { UserProvider, useUser } from './src/contexts/UserContext';
@@ -190,12 +191,7 @@ function NavigationWrapper() {
     );
   }
 
-  return (
-    <NavigationContainer theme={navigationTheme}>
-      <StatusBar style="light" />
-      {user ? <TabNavigator /> : <AuthNavigator />}
-    </NavigationContainer>
-  );
+  return user ? <TabNavigator /> : <AuthNavigator />;
 }
 
 // Custom theme that matches ChatGPT's aesthetic
@@ -240,11 +236,20 @@ const navigationTheme = {
 };
 
 export default function App() {
+  const [showSplash, setShowSplash] = useState(true);
+
   return (
     <SafeAreaProvider>
       <ThemeProvider theme={theme}>
         <UserProvider>
-          <NavigationWrapper />
+          <StatusBar style="light" />
+          {showSplash ? (
+            <SplashScreen onAnimationComplete={() => setShowSplash(false)} />
+          ) : (
+            <NavigationContainer theme={navigationTheme}>
+              <NavigationWrapper />
+            </NavigationContainer>
+          )}
         </UserProvider>
       </ThemeProvider>
     </SafeAreaProvider>
